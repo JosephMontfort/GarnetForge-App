@@ -218,8 +218,8 @@ private fun HeroOverlay(
 
     BackHandler(enabled = isExpanded) { triggerDismiss() }
 
-    val scrimAlpha by transition.animateFloat(transitionSpec = { if (targetState) tween(550) else tween(350) }, label = "scrim") { if (it) 0.65f else 0f }
-    val rotationY by transition.animateFloat(transitionSpec = { if (targetState) tween(550, easing = FastOutSlowInEasing) else tween(350, easing = FastOutSlowInEasing) }, label = "rotY") { if (it) 180f else 0f }
+    val scrimAlpha by transition.animateFloat(transitionSpec = { if (targetState) tween(550) else tween(450) }, label = "scrim") { if (it) 0.65f else 0f }
+    val rotationY by transition.animateFloat(transitionSpec = { if (targetState) tween(550, easing = FastOutSlowInEasing) else tween(450, easing = FastOutSlowInEasing) }, label = "rotY") { if (it) 180f else 0f }
 
     val startBounds = startBoundsProvider() ?: return
     val startLeft   = startBounds.offset.x.toFloat()
