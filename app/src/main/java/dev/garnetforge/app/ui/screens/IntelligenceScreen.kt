@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,7 +29,7 @@ private val CPU_L_FB  = listOf(691200,960000,1190400,1344000,1497600,1651200,190
 private val CPU_B_FB  = listOf(691200,960000,1190400,1344000,1497600,1651200,1900800,2054400,2112000,2208000,2304000,2400000)
 private val GPU_FB    = listOf(295,345,500,600,650,734,816,875,940)
 private val GOVS      = listOf("walt","conservative","powersave","performance","schedutil")
-private fun <T> List<T>.orFallback(fb: List<T>) = if (isEmpty()) fb else this
+private fun <T> List<T>.orFallback(fb: List<T>) = if (size < 2) fb else this
 private fun ci(l: List<Int>, v: Int?) = v?.let { x -> l.indices.minByOrNull { i -> kotlin.math.abs(l[i] - x) } } ?: 0
 
 @Composable
@@ -218,10 +219,7 @@ private fun ProfileEditorSheet(
     )
 
     ModalBottomSheet(
-        onDismissRequest = {
-            // Dismissed without Save: if enabled=false, auto-save disabled state to preserve settings
-            onDismiss(if (!enabled) buildProfile() else null)
-        },
+        onDismissRequest = { onDismiss(null) },
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface) {
 
@@ -361,23 +359,36 @@ private fun ProfileEditorSheet(
 
 @Composable
 private fun CoreToggleChip(core: Int, online: Boolean, forced: Boolean, onToggle: () -> Unit) {
+    val context = LocalContext.current
     val bg = when {
-        forced  -> MaterialTheme.colorScheme.surfaceVariant
+        forced  -> GarnetRed.copy(alpha = 0.72f)
         online  -> GarnetRed
         else    -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val textColor = when {
-        forced  -> MaterialTheme.colorScheme.onSurfaceVariant
+        forced  -> androidx.compose.ui.graphics.Color.White.copy(alpha = 0.82f)
         online  -> androidx.compose.ui.graphics.Color.White
         else    -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Surface(
-        onClick = { if (!forced) onToggle() },
+        onClick = {
+            if (forced) android.widget.Toast.makeText(
+                context,
+                "At least two cores should be ON",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            else onToggle()
+        },
         shape = RoundedCornerShape(10.dp),
         color = bg,
-        border = BorderStroke(1.dp, if (online && !forced) GarnetLight.copy(0.6f) else MaterialTheme.colorScheme.outline),
+        border = BorderStroke(
+            1.dp,
+            if (forced) GarnetLight.copy(0.35f)
+            else if (online) GarnetLight.copy(0.6f)
+            else MaterialTheme.colorScheme.outline
+        ),
         modifier = Modifier.size(40.dp),
-        enabled = !forced,
+        enabled = true,
     ) {
         Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
             Text("C$core", style = MaterialTheme.typography.bodySmall, color = textColor, fontWeight = FontWeight.Bold)
@@ -386,6 +397,7 @@ private fun CoreToggleChip(core: Int, online: Boolean, forced: Boolean, onToggle
         }
     }
 }
+
 
 @Composable
 private fun SheetSliderRow(
