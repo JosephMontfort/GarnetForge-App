@@ -3,6 +3,7 @@ package dev.garnetforge.app.data.repository
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import dev.garnetforge.app.data.model.AppProfile
 import dev.garnetforge.app.data.model.LiveStats
 import dev.garnetforge.app.data.model.ThermalApp
 import com.topjohnwu.superuser.Shell
@@ -15,6 +16,7 @@ class SysfsRepository(private val context: Context) {
     companion object {
         const val INSTALL_DIR   = "/data/adb/garnetforge"
         const val THERMAL_APPS  = "$INSTALL_DIR/thermal_apps.prop"
+        const val APP_PROFILES  = "$INSTALL_DIR/app_profiles.prop"
         const val SCONFIG       = "/sys/class/thermal/thermal_message/sconfig"
         const val CPU0_MAX      = "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
         const val CPU0_MIN      = "/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq"
@@ -28,15 +30,30 @@ class SysfsRepository(private val context: Context) {
         const val GPU_MIN       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/min_freq"
         const val GPU_CUR       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/cur_freq"
         const val SWAPPINESS    = "/proc/sys/vm/swappiness"
-        const val VFS_PRESSURE  = "/proc/sys/vm/vfs_cache_pressure"
         const val TCP_ALGO      = "/proc/sys/net/ipv4/tcp_congestion_control"
+        const val NODES         = "$INSTALL_DIR/nodes.prop"
     }
 
-    // ── Live stats including per-core freqs ────────────────────────────
+    // ── Available frequencies from nodes.prop ─────────────────────────
+    suspend fun getAvailableFreqsKhz(policy: Int): List<Int> = withContext(Dispatchers.IO) {
+        val key = "cpu_policy${policy}_avail_freqs"
+        val raw = Shell.cmd("grep '^${key}=' $NODES 2>/dev/null | head -1 | cut -d= -f2-")
+            .exec().out.firstOrNull()?.trim() ?: ""
+        if (raw.isEmpty()) return@withContext emptyList()
+        raw.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it > 0 }.sorted()
+    }
+
+    suspend fun getAvailableGpuFreqsMhz(): List<Int> = withContext(Dispatchers.IO) {
+        val raw = Shell.cmd("grep '^gpu_avail_freqs=' $NODES 2>/dev/null | head -1 | cut -d= -f2-")
+            .exec().out.firstOrNull()?.trim() ?: ""
+        if (raw.isEmpty()) return@withContext emptyList()
+        raw.split(",").mapNotNull { it.trim().toLongOrNull()?.div(1_000_000)?.toInt() }.filter { it > 0 }.sorted()
+    }
+
+    // ── Live stats ────────────────────────────────────────────────────
     suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
-        // Single compound shell call for all 8 core freqs + cluster freqs + temps
         val raw = Shell.cmd(
-            "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' " +
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' " +
             "\"\$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq 2>/dev/null)\" " +
             "\"\$(cat /sys/devices/system/cpu/cpufreq/policy4/scaling_cur_freq 2>/dev/null)\" " +
             "\"\$(cat $GPU_CUR 2>/dev/null)\" " +
@@ -52,18 +69,12 @@ class SysfsRepository(private val context: Context) {
             "\"\$(cat /sys/devices/system/cpu/cpu4/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
             "\"\$(cat /sys/devices/system/cpu/cpu5/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
             "\"\$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu0/online 2>/dev/null || echo 1)\" " +
-            "\"\$(for c in 1 2 3 4 5 6 7; do printf '%s ' \"\$(cat /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null || echo 1)\"; done)\""
+            "\"\$(cat /sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq 2>/dev/null)\""
         ).exec().out.firstOrNull() ?: ""
-
         val p = raw.split("|")
         fun lk(i: Int) = p.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
-
         val perCore = (8..15).map { i -> (lk(i) / 1000).toInt() }
-
-        val h = LocalTime.now().hour
-        val h12 = if (h % 12 == 0) 12 else h % 12
+        val h = LocalTime.now().hour; val h12 = if (h % 12 == 0) 12 else h % 12
         LiveStats(
             cpu0FreqMhz    = (lk(0) / 1000).toInt(),
             cpu4FreqMhz    = (lk(1) / 1000).toInt(),
@@ -79,14 +90,14 @@ class SysfsRepository(private val context: Context) {
     }
 
     suspend fun getCurrentSconfig(): String = withContext(Dispatchers.IO) {
-        Shell.cmd("cat $SCONFIG 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "0"
+        Shell.cmd("cat $SCONFIG 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "20"
     }
 
     suspend fun clearRam(): Unit = withContext(Dispatchers.IO) {
         Shell.cmd("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null").exec()
     }
 
-    // ── Direct sysfs writes ────────────────────────────────────────────
+    // ── Sysfs writes ──────────────────────────────────────────────────
     suspend fun writeCpuFreq(policy: Int, minKhz: Int?, maxKhz: Int?): Unit = withContext(Dispatchers.IO) {
         val minNode = if (policy == 0) CPU0_MIN else CPU4_MIN
         val maxNode = if (policy == 0) CPU0_MAX else CPU4_MAX
@@ -120,31 +131,22 @@ class SysfsRepository(private val context: Context) {
     }
 
     suspend fun writeZram(sizeBytes: Long, algo: String): Unit = withContext(Dispatchers.IO) {
-        // Proper ZRAM resize: reset → set algo → set disksize → mkswap → swapon
         Shell.cmd(
-            "swapoff /dev/zram0 2>/dev/null; " +
-            "echo 1 > /sys/block/zram0/reset 2>/dev/null; " +
-            "echo $algo > /sys/block/zram0/comp_algorithm 2>/dev/null; " +
-            "echo $sizeBytes > /sys/block/zram0/disksize 2>/dev/null; " +
-            "mkswap /dev/zram0 2>/dev/null; " +
-            "swapon /dev/zram0 2>/dev/null"
+            "swapoff /dev/zram0 2>/dev/null || true",
+            "echo 1 > /sys/block/zram0/reset 2>/dev/null",
+            "echo $algo > /sys/block/zram0/comp_algorithm 2>/dev/null",
+            "echo $sizeBytes > /sys/block/zram0/disksize 2>/dev/null",
+            "mkswap /dev/zram0 2>/dev/null",
+            "swapon -p 5 /dev/zram0 2>/dev/null"
         ).exec()
     }
 
     suspend fun writeIoScheduler(scheduler: String): Unit = withContext(Dispatchers.IO) {
-        Shell.cmd(
-            "for q in /sys/block/*/queue/scheduler; do " +
-            "  echo $scheduler > \"\$q\" 2>/dev/null; " +
-            "done"
-        ).exec()
+        Shell.cmd("for q in /sys/block/*/queue/scheduler; do echo $scheduler > \"\$q\" 2>/dev/null; done").exec()
     }
 
     suspend fun writeReadAhead(kb: Int): Unit = withContext(Dispatchers.IO) {
-        Shell.cmd(
-            "for ra in /sys/block/*/queue/read_ahead_kb; do " +
-            "  echo $kb > \"\$ra\" 2>/dev/null; " +
-            "done"
-        ).exec()
+        Shell.cmd("for ra in /sys/block/*/queue/read_ahead_kb; do echo $kb > \"\$ra\" 2>/dev/null; done").exec()
     }
 
     suspend fun writeTcp(algo: String): Unit = withContext(Dispatchers.IO) {
@@ -152,38 +154,57 @@ class SysfsRepository(private val context: Context) {
     }
 
     suspend fun writeNetRxqueuelen(v: Int): Unit = withContext(Dispatchers.IO) {
-        Shell.cmd(
-            "for iface in \$(ls /sys/class/net/ 2>/dev/null); do " +
-            "  ip link set \$iface txqueuelen $v 2>/dev/null; " +
-            "done"
-        ).exec()
+        Shell.cmd("for iface in \$(ls /sys/class/net/ 2>/dev/null); do ip link set \$iface txqueuelen $v 2>/dev/null; done").exec()
     }
 
-    // ── Thermal apps ───────────────────────────────────────────────────
-    suspend fun getThermalApps(): Map<String, String> = withContext(Dispatchers.IO) {
-        Shell.cmd("cat $THERMAL_APPS 2>/dev/null").exec().out.mapNotNull { line ->
-            val eq = line.indexOf('='); if (eq <= 0) null
-            else {
-                val key = line.substring(0, eq).trim()
-                val pkg = if (key.startsWith("thermal_")) key.substring(8) else key
-                pkg to line.substring(eq + 1).trim()
-            }
+    // ── App profiles ──────────────────────────────────────────────────
+    suspend fun getAppProfiles(): Map<String, AppProfile> = withContext(Dispatchers.IO) {
+        Shell.cmd("cat $APP_PROFILES 2>/dev/null").exec().out.mapNotNull { line ->
+            val eq = line.indexOf('='); if (eq <= 0) return@mapNotNull null
+            val pkg = line.substring(0, eq).trim()
+            val m = line.substring(eq + 1).split(",").mapNotNull { pair ->
+                val ci = pair.indexOf(':'); if (ci <= 0) null else pair.substring(0, ci) to pair.substring(ci + 1)
+            }.toMap()
+            pkg to AppProfile(
+                pkg     = pkg,
+                enabled = m["enabled"] == "1",
+                cpu0Min = m["cpu0_min"]?.toIntOrNull(),
+                cpu0Max = m["cpu0_max"]?.toIntOrNull(),
+                cpu4Min = m["cpu4_min"]?.toIntOrNull(),
+                cpu4Max = m["cpu4_max"]?.toIntOrNull(),
+                gpuMin  = m["gpu_min"]?.toIntOrNull(),
+                gpuMax  = m["gpu_max"]?.toIntOrNull(),
+                thermal = m["thermal"],
+                gov0    = m["gov0"],
+                gov4    = m["gov4"],
+            )
         }.toMap()
     }
 
-    suspend fun setAppThermal(pkg: String, profile: String): Unit = withContext(Dispatchers.IO) {
+    suspend fun setAppProfile(pkg: String, profile: AppProfile?): Unit = withContext(Dispatchers.IO) {
         val esc = pkg.replace(".", "\\.")
-        if (profile.isEmpty()) {
-            Shell.cmd("grep -v '^thermal_${esc}=' $THERMAL_APPS > ${THERMAL_APPS}.tmp 2>/dev/null && mv ${THERMAL_APPS}.tmp $THERMAL_APPS 2>/dev/null || true").exec()
-        } else {
-            Shell.cmd(
-                "grep -v '^thermal_${esc}=' $THERMAL_APPS > ${THERMAL_APPS}.tmp 2>/dev/null; " +
-                "printf 'thermal_${pkg}=${profile}\\n' >> ${THERMAL_APPS}.tmp; " +
-                "mv ${THERMAL_APPS}.tmp $THERMAL_APPS"
-            ).exec()
+        // Remove existing entry
+        Shell.cmd(
+            "grep -v '^${esc}=' $APP_PROFILES > ${APP_PROFILES}.tmp 2>/dev/null || true",
+            "[ -f ${APP_PROFILES}.tmp ] && mv ${APP_PROFILES}.tmp $APP_PROFILES || true"
+        ).exec()
+        if (profile == null || !profile.enabled) return@withContext
+        val data = buildString {
+            append("enabled:1")
+            profile.cpu0Min?.let { append(",cpu0_min:$it") }
+            profile.cpu0Max?.let { append(",cpu0_max:$it") }
+            profile.cpu4Min?.let { append(",cpu4_min:$it") }
+            profile.cpu4Max?.let { append(",cpu4_max:$it") }
+            profile.gpuMin?.let  { append(",gpu_min:$it") }
+            profile.gpuMax?.let  { append(",gpu_max:$it") }
+            profile.thermal?.let { append(",thermal:$it") }
+            profile.gov0?.let    { append(",gov0:$it") }
+            profile.gov4?.let    { append(",gov4:$it") }
         }
+        Shell.cmd("printf '${pkg}=${data}\\n' >> $APP_PROFILES").exec()
     }
 
+    // ── Installed app list ────────────────────────────────────────────
     suspend fun getInstalledApps(): List<ThermalApp> = withContext(Dispatchers.Default) {
         val pm = context.packageManager
         val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).also {
@@ -192,9 +213,7 @@ class SysfsRepository(private val context: Context) {
         val flags: Int = if (Build.VERSION.SDK_INT >= 23) PackageManager.MATCH_ALL else 0
         val ris = if (Build.VERSION.SDK_INT >= 33)
             pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(flags.toLong()))
-        else
-            @Suppress("DEPRECATION") pm.queryIntentActivities(intent, flags)
-
+        else @Suppress("DEPRECATION") pm.queryIntentActivities(intent, flags)
         ris.mapNotNull { ri ->
             val ai  = ri.activityInfo?.applicationInfo ?: return@mapNotNull null
             val pkg = ai.packageName ?: return@mapNotNull null

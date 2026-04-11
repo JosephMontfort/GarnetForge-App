@@ -53,10 +53,8 @@ object ScriptManager {
                     copyAsset(ctx, "scripts/config.prop", "$INSTALL_DIR/config.prop")
                 }
 
-                // Run detect_nodes on first install or if nodes.prop missing
-                if (!nodesExist || needsUpdate) {
-                    Shell.cmd("sh $INSTALL_DIR/detect_nodes.sh").exec()
-                }
+                // Always re-run detect_nodes — kernel may change between boots
+                Shell.cmd("sh $INSTALL_DIR/detect_nodes.sh").exec()
 
                 // Save version
                 Shell.cmd("printf '%s' '$appVersionCode' > $VERSION_FILE").exec()

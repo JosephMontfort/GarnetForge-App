@@ -70,6 +70,9 @@ fun TuningScreen(
     sconfig: String,
     coreStates: List<Boolean>,
     perCoreFreqMhz: List<Int>,
+    availFreqsL: List<Int>,
+    availFreqsB: List<Int>,
+    availFreqsGpu: List<Int>,
     blurEnabled: Boolean,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
@@ -172,6 +175,9 @@ fun TuningScreen(
                         sconfig     = sconfig,
                         coreStates  = coreStates,
                         perCoreFreqMhz = perCoreFreqMhz,
+                        availFreqsL = availFreqsL,
+                        availFreqsB = availFreqsB,
+                        availFreqsGpu = availFreqsGpu,
                         onSet       = onSet,
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
@@ -193,6 +199,9 @@ private fun HeroOverlay(
     sconfig: String,
     coreStates: List<Boolean>,
     perCoreFreqMhz: List<Int>,
+    availFreqsL: List<Int>,
+    availFreqsB: List<Int>,
+    availFreqsGpu: List<Int>,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
     onToggleCore: (Int) -> Unit,
@@ -300,7 +309,7 @@ private fun HeroOverlay(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, onSet, onProfileSelected, onToggleCore)
+                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, onSet, onProfileSelected, onToggleCore)
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -452,6 +461,7 @@ private fun HeroOverlay(
 private fun SectionContent(
     id: String, config: GarnetConfig, sconfig: String,
     coreStates: List<Boolean>, perCoreFreqMhz: List<Int>,
+    availFreqsL: List<Int>, availFreqsB: List<Int>, availFreqsGpu: List<Int>,
     onSet: (String,String)->Unit,
     onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
 ) {
@@ -470,47 +480,50 @@ private fun SectionContent(
 
     when (id) {
         "cpu_little" -> {
+            val freqL = availFreqsL.ifEmpty { CPU_L }
+            val maxMhzL = freqL.lastOrNull()?.div(1000) ?: 1958
             Text("Little Cluster", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tRed)
             Spacer(Modifier.height(4.dp))
-            // Live per-core frequency graphs for cores 0-3
-            CoreFreqGrid(cores = (0..3).toList(), freqs = perCoreFreqMhz, maxFreq = 1958, color = tRed)
+            CoreFreqGrid(cores = (0..3).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzL, color = tRed)
             Spacer(Modifier.height(8.dp))
             ChipRowTuning("Governor", GOVS, config.cpuPolicy0Governor,
                 info = "CPU frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy0_governor", it) }
             Spacer(Modifier.height(8.dp))
-            var minI by remember(config.cpuPolicy0Min) { mutableIntStateOf(ci(CPU_L, config.cpuPolicy0Min)) }
-            var maxI by remember(config.cpuPolicy0Max) { mutableIntStateOf(ci(CPU_L, config.cpuPolicy0Max)) }
-            RevertableSlider("Min Frequency", minI.toFloat(), 0f, CPU_L.lastIndex.toFloat(), CPU_L.lastIndex-1,
-                "${CPU_L[minI]/1000} MHz", tRed, { minI=it.toInt() },
-                onRevert = { minI = ci(CPU_L, defaultCpuL["min"]!!); onSet("cpu_policy0_min", CPU_L[minI].toString()) },
+            var minI by remember(config.cpuPolicy0Min, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Min)) }
+            var maxI by remember(config.cpuPolicy0Max, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Max)) }
+            RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
+                "${freqL.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
+                onRevert = { minI = 0; onSet("cpu_policy0_min", freqL.first().toString()) },
                 info = "Minimum allowed frequency. Lower = better idle battery life.",
-            ) { onSet("cpu_policy0_min", CPU_L[minI].toString()) }
-            RevertableSlider("Max Frequency", maxI.toFloat(), 0f, CPU_L.lastIndex.toFloat(), CPU_L.lastIndex-1,
-                "${CPU_L[maxI]/1000} MHz", tRed, { maxI=it.toInt() },
-                onRevert = { maxI = ci(CPU_L, defaultCpuL["max"]!!); onSet("cpu_policy0_max", CPU_L[maxI].toString()) },
+            ) { onSet("cpu_policy0_min", freqL[minI].toString()) }
+            RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
+                "${freqL.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
+                onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) },
                 info = "Maximum allowed frequency. Limit to save battery or thermals.",
-            ) { onSet("cpu_policy0_max", CPU_L[maxI].toString()) }
+            ) { onSet("cpu_policy0_max", freqL[maxI].toString()) }
         }
         "cpu_big" -> {
+            val freqB = availFreqsB.ifEmpty { CPU_B }
+            val maxMhzB = freqB.lastOrNull()?.div(1000) ?: 2400
             Text("Big Cluster", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tRed)
             Spacer(Modifier.height(4.dp))
-            CoreFreqGrid(cores = (4..7).toList(), freqs = perCoreFreqMhz, maxFreq = 2400, color = tRed)
+            CoreFreqGrid(cores = (4..7).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzB, color = tRed)
             Spacer(Modifier.height(8.dp))
             ChipRowTuning("Governor", GOVS, config.cpuPolicy4Governor,
                 info = "CPU frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy4_governor", it) }
             Spacer(Modifier.height(8.dp))
-            var minI by remember(config.cpuPolicy4Min) { mutableIntStateOf(ci(CPU_B, config.cpuPolicy4Min)) }
-            var maxI by remember(config.cpuPolicy4Max) { mutableIntStateOf(ci(CPU_B, config.cpuPolicy4Max)) }
-            RevertableSlider("Min Frequency", minI.toFloat(), 0f, CPU_B.lastIndex.toFloat(), CPU_B.lastIndex-1,
-                "${CPU_B[minI]/1000} MHz", tRed, { minI=it.toInt() },
-                onRevert = { minI = ci(CPU_B, defaultCpuB["min"]!!); onSet("cpu_policy4_min", CPU_B[minI].toString()) },
+            var minI by remember(config.cpuPolicy4Min, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Min)) }
+            var maxI by remember(config.cpuPolicy4Max, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Max)) }
+            RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqB.lastIndex.toFloat(), (freqB.size-2).coerceAtLeast(0),
+                "${freqB.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
+                onRevert = { minI = 0; onSet("cpu_policy4_min", freqB.first().toString()) },
                 info = "Minimum allowed frequency for big cores.",
-            ) { onSet("cpu_policy4_min", CPU_B[minI].toString()) }
-            RevertableSlider("Max Frequency", maxI.toFloat(), 0f, CPU_B.lastIndex.toFloat(), CPU_B.lastIndex-1,
-                "${CPU_B[maxI]/1000} MHz", tRed, { maxI=it.toInt() },
-                onRevert = { maxI = ci(CPU_B, defaultCpuB["max"]!!); onSet("cpu_policy4_max", CPU_B[maxI].toString()) },
+            ) { onSet("cpu_policy4_min", freqB[minI].toString()) }
+            RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqB.lastIndex.toFloat(), (freqB.size-2).coerceAtLeast(0),
+                "${freqB.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
+                onRevert = { maxI = freqB.lastIndex; onSet("cpu_policy4_max", freqB.last().toString()) },
                 info = "Maximum frequency for big cores. Limit for thermals.",
-            ) { onSet("cpu_policy4_max", CPU_B[maxI].toString()) }
+            ) { onSet("cpu_policy4_max", freqB[maxI].toString()) }
         }
         "core" -> {
             Text("Core Control", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tRed)
@@ -633,65 +646,99 @@ private fun SectionContent(
     }
 }
 
-// ── Live per-core frequency grid ──────────────────────────────────────
+// ── Live per-core frequency graph — Canvas-based sparkline style ───────
 @Composable
 private fun CoreFreqGrid(cores: List<Int>, freqs: List<Int>, maxFreq: Int, color: Color) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    val trackBg = if (isLight) Color.Black.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.08f)
-    val textOnBar = Color.White
+    // Keep a rolling history of 20 samples per core for the sparkline
+    val history = remember(cores) { cores.associate { it to ArrayDeque<Float>(20) } }
+
+    LaunchedEffect(freqs) {
+        cores.forEach { c ->
+            val mhz = freqs.getOrElse(c) { 0 }
+            val frac = (mhz.toFloat() / maxFreq.toFloat()).coerceIn(0f, 1f)
+            val q = history[c] ?: return@forEach
+            if (q.size >= 20) q.removeFirst()
+            q.addLast(frac)
+        }
+    }
+
+    val trackBg  = if (isLight) Color.Black.copy(0.06f)  else Color.White.copy(0.07f)
+    val gridLine = if (isLight) Color.Black.copy(0.06f)  else Color.White.copy(0.06f)
+    val fillAlpha = if (isLight) 0.18f else 0.22f
+
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         cores.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { coreIdx ->
                     val mhz = freqs.getOrElse(coreIdx) { 0 }
                     val frac = (mhz.toFloat() / maxFreq.toFloat()).coerceIn(0f, 1f)
-                    val animFrac by animateFloatAsState(frac, spring(0.8f, 120f), label = "cf$coreIdx")
-                    val animMhz by animateIntAsState(mhz, tween(300), label = "cm$coreIdx")
+                    val animFrac by animateFloatAsState(frac, tween(800), label = "cf$coreIdx")
+                    val animMhz  by animateIntAsState(mhz, tween(800), label = "cm$coreIdx")
+                    val hist = remember(coreIdx) { history[coreIdx] ?: ArrayDeque() }
+
                     Box(
-                        Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(trackBg),
+                        Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(10.dp)).background(trackBg)
                     ) {
-                        // Fill bar
-                        Box(
-                            Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(animFrac)
-                                .background(
-                                    Brush.horizontalGradient(listOf(color.copy(0.5f), color.copy(0.85f))),
-                                    RoundedCornerShape(10.dp)
-                                )
-                        )
-                        // Labels
+                        // Canvas sparkline
+                        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                            val w = size.width; val h = size.height
+                            val pts = hist.toList()
+                            if (pts.size < 2) return@Canvas
+
+                            // Subtle horizontal grid lines at 25%, 50%, 75%
+                            listOf(0.25f, 0.5f, 0.75f).forEach { g ->
+                                drawLine(gridLine, Offset(0f, h * (1f - g)), Offset(w, h * (1f - g)), strokeWidth = 0.8f)
+                            }
+
+                            // Build path
+                            val path = androidx.compose.ui.graphics.Path()
+                            val step = w / (pts.size - 1).coerceAtLeast(1)
+                            pts.forEachIndexed { i, v ->
+                                val x = i * step; val y = h * (1f - v)
+                                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                            }
+
+                            // Fill under curve
+                            val fillPath = androidx.compose.ui.graphics.Path().apply {
+                                addPath(path)
+                                lineTo(w, h); lineTo(0f, h); close()
+                            }
+                            drawPath(fillPath, color.copy(alpha = fillAlpha))
+
+                            // Stroke line — stronger in dark, lighter in light
+                            drawPath(path, color.copy(alpha = if (isLight) 0.6f else 0.85f),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                    width = if (isLight) 1.5f else 2f,
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                    join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                                ))
+
+                            // Live dot at current position
+                            val lastX = (pts.lastIndex) * step
+                            val lastY = h * (1f - (pts.lastOrNull() ?: 0f))
+                            drawCircle(color, radius = if (isLight) 3.5f else 4f, center = Offset(lastX, lastY))
+                        }
+
+                        // Labels overlay
                         Row(
-                            Modifier.fillMaxSize().padding(horizontal = 8.dp),
-                            Arrangement.SpaceBetween,
-                            Alignment.CenterVertically,
+                            Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 4.dp),
+                            Arrangement.SpaceBetween, Alignment.Bottom
                         ) {
-                            Text(
-                                "C$coreIdx",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (animFrac > 0.35f) textOnBar else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                if (mhz == 0) "off" else "$animMhz",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (animFrac > 0.65f) textOnBar else color,
-                            )
+                            Text("C$coreIdx",
+                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                color = if (isLight) color.copy(0.8f) else color)
+                            Text(if (mhz == 0) "off" else "${animMhz}M",
+                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
+                                color = if (isLight) color.copy(0.8f) else color)
                         }
                     }
                 }
-                // Pad odd row
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
 }
-
 // ── Slider with long-press revert + info button ───────────────────────
 @Composable
 private fun RevertableSlider(

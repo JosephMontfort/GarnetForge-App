@@ -37,7 +37,7 @@ class ConfigRepository {
             zramSize               = raw["zram_size"]?.toLongOrNull() ?: 4294967296L,
             ioScheduler            = s("io_scheduler").ifEmpty { "bfq" },
             readAheadKb            = i("read_ahead_kb", 128),
-            thermalProfile         = i("thermal_profile", 0),
+            thermalProfile         = i("thermal_profile", 20),
             thermalBoost           = i("thermal_boost", 0),
             tcpAlgo                = s("tcp_algo").ifEmpty { "cubic" },
             netRxqueuelen          = i("net_rxqueuelen", 1000),

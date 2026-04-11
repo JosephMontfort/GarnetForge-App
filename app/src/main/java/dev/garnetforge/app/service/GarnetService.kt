@@ -8,11 +8,24 @@ import android.os.*
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.garnetforge.app.R
+import dev.garnetforge.app.data.model.AppProfile
 import dev.garnetforge.app.data.model.GarnetConfig
 import dev.garnetforge.app.data.repository.ConfigRepository
 import dev.garnetforge.app.data.repository.SysfsRepository
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.*
+
+private data class SystemSnapshot(
+    val thermal: String = "20",
+    val cpu0Min: String = "691200",
+    val cpu0Max: String = "1958400",
+    val cpu4Min: String = "691200",
+    val cpu4Max: String = "2400000",
+    val gpuMin: String = "295000000",
+    val gpuMax: String = "940000000",
+    val gov0: String = "walt",
+    val gov4: String = "walt",
+)
 
 class GarnetService : Service() {
 
@@ -28,16 +41,16 @@ class GarnetService : Service() {
     private val sysfsRepo  = SysfsRepository(this)
 
     @Volatile private var cfg: GarnetConfig = GarnetConfig()
-    @Volatile private var thermalMap: Map<String, String> = emptyMap()
-    @Volatile private var thermalMapAge = 0L
+    @Volatile private var appProfileMap: Map<String, AppProfile> = emptyMap()
+    @Volatile private var profileMapAge = 0L
     @Volatile private var screenOn = true
 
     private var pollJob: Job? = null
-    private var lastPkg     = ""
-    private var prevSconfig = ""
-    private var prevSaved   = false
+    private var lastPkg      = ""
+    private var prevSnapshot: SystemSnapshot? = null
+    private var prevSaved    = false
 
-    private val SCONFIG = SysfsRepository.SCONFIG
+    private val SCONFIG  = SysfsRepository.SCONFIG
     private val USB_NODE = "/sys/class/thermal/thermal_message/usb_online"
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -74,8 +87,8 @@ class GarnetService : Service() {
         screenOn = (getSystemService(POWER_SERVICE) as PowerManager).isInteractive
         scope.launch {
             cfg = runCatching { configRepo.load() }.getOrDefault(GarnetConfig())
-            thermalMap = runCatching { sysfsRepo.getThermalApps() }.getOrDefault(emptyMap())
-            thermalMapAge = System.currentTimeMillis()
+            appProfileMap = runCatching { sysfsRepo.getAppProfiles().filter { it.value.enabled } }.getOrDefault(emptyMap())
+            profileMapAge = System.currentTimeMillis()
             if (screenOn) startPolling()
         }
         scope.launch { while (isActive) { delay(30_000); cfg = runCatching { configRepo.load() }.getOrDefault(cfg) } }
@@ -92,19 +105,15 @@ class GarnetService : Service() {
 
     private suspend fun onScreenOff() {
         pollJob?.cancel()
-        // Restore per-app before night mode applies
         restoreIfNeeded()
-        lastPkg = ""; prevSaved = false; prevSconfig = ""
+        lastPkg = ""; prevSaved = false; prevSnapshot = null
         if (!cfg.nightMode) return
-        // Only offline non-essential cores — do NOT touch frequencies
-        Shell.cmd(
-            "for c in 2 3 5 6 7; do echo 0 > /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null; done",
-        ).exec()
+        Shell.cmd("for c in 2 3 5 6 7; do echo 0 > /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null; done").exec()
     }
 
     private suspend fun onScreenOn() {
         if (cfg.nightMode) Shell.cmd(
-            "for c in 1 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null; done",
+            "for c in 1 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null; done"
         ).exec()
         startPolling()
     }
@@ -120,61 +129,85 @@ class GarnetService : Service() {
     private fun startPolling() {
         pollJob?.cancel()
         pollJob = scope.launch {
-            while (isActive && screenOn) {
-                runCatching { tick() }
-                delay(500)
-            }
+            while (isActive && screenOn) { runCatching { tick() }; delay(500) }
         }
     }
 
     private suspend fun tick() {
         if (!cfg.perAppThermal) return
-        // Charging Control takes priority
         if (cfg.thermalControl) {
             val usb = Shell.cmd("cat $USB_NODE 2>/dev/null").exec().out.firstOrNull()?.trim()
             if (usb == "1") return
         }
-        // Refresh thermal map every 10s
         val now = System.currentTimeMillis()
-        if (now - thermalMapAge > 10_000) {
-            thermalMap = runCatching { sysfsRepo.getThermalApps() }.getOrDefault(thermalMap)
-            thermalMapAge = now
+        if (now - profileMapAge > 10_000) {
+            appProfileMap = runCatching { sysfsRepo.getAppProfiles().filter { it.value.enabled } }.getOrDefault(appProfileMap)
+            profileMapAge = now
         }
 
-        val rawPkg = getForegroundPackage()
-        // isLauncher: user pressed home — treat as "no profile app"
+        val rawPkg   = getForegroundPackage()
         val isLauncher = rawPkg != null && isLauncherPkg(rawPkg)
         val pkg = if (rawPkg == null || isLauncher) null else rawPkg
 
-        if (pkg == lastPkg && !isLauncher) return  // no change
-
+        if (pkg == lastPkg && !isLauncher) return
         lastPkg = pkg ?: ""
 
-        if (pkg == null) {
-            // Home screen or no foreground — restore
-            restoreIfNeeded()
-            return
-        }
+        if (pkg == null) { restoreIfNeeded(); return }
 
-        val profile = thermalMap[pkg]
-        if (profile.isNullOrEmpty()) {
-            restoreIfNeeded()
-            return
-        }
+        val profile = appProfileMap[pkg]
+        if (profile == null) { restoreIfNeeded(); return }
 
         if (!prevSaved) {
-            prevSconfig = Shell.cmd("cat $SCONFIG 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "0"
+            prevSnapshot = captureSnapshot()
             prevSaved = true
         }
-        val cur = Shell.cmd("cat $SCONFIG 2>/dev/null").exec().out.firstOrNull()?.trim()
-        if (cur != profile) Shell.cmd("printf '$profile' > $SCONFIG 2>/dev/null").exec()
+        applyProfile(profile)
+    }
+
+    private suspend fun captureSnapshot(): SystemSnapshot {
+        val r = { p: String -> Shell.cmd("cat $p 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "" }
+        return SystemSnapshot(
+            thermal = r(SCONFIG),
+            cpu0Min = r(SysfsRepository.CPU0_MIN),
+            cpu0Max = r(SysfsRepository.CPU0_MAX),
+            cpu4Min = r(SysfsRepository.CPU4_MIN),
+            cpu4Max = r(SysfsRepository.CPU4_MAX),
+            gpuMin  = r(SysfsRepository.GPU_MIN),
+            gpuMax  = r(SysfsRepository.GPU_MAX),
+            gov0    = r(SysfsRepository.CPU0_GOV),
+            gov4    = r(SysfsRepository.CPU4_GOV),
+        )
+    }
+
+    private suspend fun applyProfile(p: AppProfile) {
+        val cmds = mutableListOf<String>()
+        p.thermal?.let  { cmds.add("printf '$it' > $SCONFIG 2>/dev/null") }
+        p.gov0?.let     { cmds.add("echo $it > ${SysfsRepository.CPU0_GOV} 2>/dev/null") }
+        p.gov4?.let     { cmds.add("echo $it > ${SysfsRepository.CPU4_GOV} 2>/dev/null") }
+        p.cpu0Max?.let  { cmds.add("echo $it > ${SysfsRepository.CPU0_MAX} 2>/dev/null") }
+        p.cpu0Min?.let  { cmds.add("echo $it > ${SysfsRepository.CPU0_MIN} 2>/dev/null") }
+        p.cpu4Max?.let  { cmds.add("echo $it > ${SysfsRepository.CPU4_MAX} 2>/dev/null") }
+        p.cpu4Min?.let  { cmds.add("echo $it > ${SysfsRepository.CPU4_MIN} 2>/dev/null") }
+        p.gpuMax?.let   { cmds.add("echo ${it * 1_000_000L} > ${SysfsRepository.GPU_MAX} 2>/dev/null") }
+        p.gpuMin?.let   { cmds.add("echo ${it * 1_000_000L} > ${SysfsRepository.GPU_MIN} 2>/dev/null") }
+        if (cmds.isNotEmpty()) Shell.cmd(*cmds.toTypedArray()).exec()
     }
 
     private suspend fun restoreIfNeeded() {
-        if (prevSaved && prevSconfig.isNotEmpty()) {
-            Shell.cmd("printf '$prevSconfig' > $SCONFIG 2>/dev/null").exec()
-            prevSaved = false; prevSconfig = ""
-        }
+        val snap = prevSnapshot ?: return
+        if (!prevSaved) return
+        Shell.cmd(
+            "printf '${snap.thermal}' > $SCONFIG 2>/dev/null",
+            "echo ${snap.gov0} > ${SysfsRepository.CPU0_GOV} 2>/dev/null",
+            "echo ${snap.gov4} > ${SysfsRepository.CPU4_GOV} 2>/dev/null",
+            "echo ${snap.cpu0Max} > ${SysfsRepository.CPU0_MAX} 2>/dev/null",
+            "echo ${snap.cpu0Min} > ${SysfsRepository.CPU0_MIN} 2>/dev/null",
+            "echo ${snap.cpu4Max} > ${SysfsRepository.CPU4_MAX} 2>/dev/null",
+            "echo ${snap.cpu4Min} > ${SysfsRepository.CPU4_MIN} 2>/dev/null",
+            "echo ${snap.gpuMax} > ${SysfsRepository.GPU_MAX} 2>/dev/null",
+            "echo ${snap.gpuMin} > ${SysfsRepository.GPU_MIN} 2>/dev/null",
+        ).exec()
+        prevSaved = false; prevSnapshot = null
     }
 
     private fun getForegroundPackage(): String? = try {
@@ -182,22 +215,15 @@ class GarnetService : Service() {
         val now = System.currentTimeMillis()
         val events = usm.queryEvents(now - 3000, now) ?: return null
         val ev = UsageEvents.Event(); var last: String? = null
-        while (events.hasNextEvent()) {
-            events.getNextEvent(ev)
-            if (ev.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) last = ev.packageName
-        }
+        while (events.hasNextEvent()) { events.getNextEvent(ev)
+            if (ev.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) last = ev.packageName }
         last?.takeIf { !isSystemService(it) }
     } catch (e: Exception) { null }
 
-    /** True if this package IS a launcher/homescreen (triggers restore) */
     private fun isLauncherPkg(p: String) =
-        p.startsWith("com.android.launcher") ||
-        p.startsWith("com.google.android.apps.nexuslauncher") ||
-        p.startsWith("com.miui.home") ||
-        p.startsWith("com.oneplus.launcher") ||
-        p.startsWith("com.sec.android.app.launcher")
+        p.startsWith("com.android.launcher") || p.startsWith("com.google.android.apps.nexuslauncher") ||
+        p.startsWith("com.miui.home") || p.startsWith("com.oneplus.launcher") || p.startsWith("com.sec.android.app.launcher")
 
-    /** True if this is a system UI service we should completely ignore */
     private fun isSystemService(p: String) =
         p == packageName || p.startsWith("com.android.systemui") || p == "android"
 

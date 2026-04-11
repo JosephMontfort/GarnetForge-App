@@ -58,12 +58,14 @@ class MainActivity : ComponentActivity() {
                 val stats       by vm.stats.collectAsState()
                 val sconfig     by vm.sconfig.collectAsState()
                 val apps        by vm.apps.collectAsState()
-                val tMap        by vm.thermalMap.collectAsState()
                 val toast       by vm.toast.collectAsState()
                 val appsLoading by vm.appsLoading.collectAsState()
                 val deviceInfo  by vm.deviceInfo.collectAsState()
                 val coreStates      by vm.coreStates.collectAsState()
                 val perCoreFreqMhz  by vm.perCoreFreqMhz.collectAsState()
+                val availFreqsL     by vm.availFreqsL.collectAsState()
+                val availFreqsB     by vm.availFreqsB.collectAsState()
+                val availFreqsGpu   by vm.availFreqsGpu.collectAsState()
 
                 when {
                     checking -> SplashScreen()
@@ -137,16 +139,23 @@ class MainActivity : ComponentActivity() {
                                     DashboardScreen(stats, config, sconfig, onClearRam = { vm.clearRam() })
                                 }
                                 composable(Screen.Tuning.route) {
-                                    TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, blurEnabled = blurEnabled,
+                                    TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, blurEnabled = blurEnabled,
                                         onSet = { k, v -> vm.setConfig(k, v) },
                                         onProfileSelected = { vm.applyThermalProfile(it) },
                                         onToggleCore = { vm.toggleCore(it) })
                                 }
                                 composable(Screen.Intelligence.route) {
-                                    IntelligenceScreen(config, apps, tMap, appsLoading,
-                                        onSet          = { k, v -> vm.setConfig(k, v) },
-                                        onLoadApps     = { vm.loadApps() },
-                                        onSetProfile   = { pkg, prof -> vm.setAppThermal(pkg, prof) })
+                                    IntelligenceScreen(
+                                        config        = config,
+                                        apps          = apps,
+                                        appsLoading   = appsLoading,
+                                        availFreqsL   = availFreqsL,
+                                        availFreqsB   = availFreqsB,
+                                        availFreqsGpu = availFreqsGpu,
+                                        onSet         = { k, v -> vm.setConfig(k, v) },
+                                        onLoadApps    = { vm.loadApps() },
+                                        onSaveProfile = { pkg, prof -> vm.saveAppProfile(pkg, prof) },
+                                    )
                                 }
                                 composable(Screen.Settings.route) {
                                     SettingsScreen(
