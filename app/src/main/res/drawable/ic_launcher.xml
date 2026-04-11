@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+  <!-- Background gradient fill -->
+  <path
+    android:fillColor="#0d0d1a"
+    android:pathData="M0,0 L108,0 L108,108 L0,108 Z"/>
+  <!-- Outer gem ring -->
+  <path
+    android:fillColor="#c0392b"
+    android:fillAlpha="0.2"
+    android:pathData="M54,8 L90,26 L102,62 L82,94 L26,94 L6,62 L18,26 Z"/>
+  <!-- Main gem body -->
+  <path
+    android:fillColor="#c0392b"
+    android:pathData="M54,16 L84,32 L94,60 L76,88 L32,88 L14,60 L24,32 Z"/>
+  <!-- Inner highlight facet -->
+  <path
+    android:fillColor="#e74c3c"
+    android:fillAlpha="0.7"
+    android:pathData="M54,24 L76,38 L80,60 L54,80 L28,60 L32,38 Z"/>
+  <!-- Top facet highlight -->
+  <path
+    android:fillColor="#FFFFFF"
+    android:fillAlpha="0.25"
+    android:pathData="M54,24 L76,38 L54,48 L32,38 Z"/>
+  <!-- G letter -->
+  <path
+    android:fillColor="#FFFFFF"
+    android:fillAlpha="0.95"
+    android:pathData="M58,43 L48,43 Q40,43 40,52 L40,60 Q40,68 48,68 L58,68 L58,62 L52,62 Q47,62 47,58 L47,54 Q47,50 52,50 L58,50 L58,56 L61,56 L61,43 Z"/>
+</vector>

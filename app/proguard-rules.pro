@@ -1,0 +1,3 @@
+-keep class com.topjohnwu.superuser.** { *; }
+-keep class com.montfort.garnetforge.** { *; }
+-keepattributes *Annotation*
