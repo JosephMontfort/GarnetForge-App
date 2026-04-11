@@ -150,6 +150,14 @@ class GarnetService : Service() {
         val pkg = if (rawPkg == null || isLauncher) null else rawPkg
 
         if (pkg == lastPkg && !isLauncher) return
+        // Brief dwell — ignore if pkg flipped back within one poll cycle
+        if (pkg != null && pkg != lastPkg) {
+            delay(600)
+            val recheck = getForegroundPackage()
+            val recheckIsLauncher = recheck != null && isLauncherPkg(recheck)
+            val stable = if (recheck == null || recheckIsLauncher) null else recheck
+            if (stable != pkg) return   // already changed, skip
+        }
         lastPkg = pkg ?: ""
 
         if (pkg == null) { restoreIfNeeded(); return }
@@ -190,6 +198,12 @@ class GarnetService : Service() {
         p.cpu4Min?.let  { cmds.add("echo $it > ${SysfsRepository.CPU4_MIN} 2>/dev/null") }
         p.gpuMax?.let   { cmds.add("echo ${it * 1_000_000L} > ${SysfsRepository.GPU_MAX} 2>/dev/null") }
         p.gpuMin?.let   { cmds.add("echo ${it * 1_000_000L} > ${SysfsRepository.GPU_MIN} 2>/dev/null") }
+        // Core control — only offline allowed cores (1-3 little, 5-7 big; never 0 or 4)
+        val allowed = (1..3).toSet() + (5..7).toSet()
+        val toOffline = p.offlinedCores.intersect(allowed)
+        val toOnline  = allowed - toOffline
+        toOffline.forEach { cmds.add("echo 0 > /sys/devices/system/cpu/cpu${it}/online 2>/dev/null") }
+        toOnline.forEach  { cmds.add("echo 1 > /sys/devices/system/cpu/cpu${it}/online 2>/dev/null") }
         if (cmds.isNotEmpty()) Shell.cmd(*cmds.toTypedArray()).exec()
     }
 
@@ -206,6 +220,8 @@ class GarnetService : Service() {
             "echo ${snap.cpu4Min} > ${SysfsRepository.CPU4_MIN} 2>/dev/null",
             "echo ${snap.gpuMax} > ${SysfsRepository.GPU_MAX} 2>/dev/null",
             "echo ${snap.gpuMin} > ${SysfsRepository.GPU_MIN} 2>/dev/null",
+            // Bring all cores back online
+            "for c in 1 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null; done",
         ).exec()
         prevSaved = false; prevSnapshot = null
     }
@@ -213,11 +229,24 @@ class GarnetService : Service() {
     private fun getForegroundPackage(): String? = try {
         val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        val events = usm.queryEvents(now - 3000, now) ?: return null
-        val ev = UsageEvents.Event(); var last: String? = null
-        while (events.hasNextEvent()) { events.getNextEvent(ev)
-            if (ev.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) last = ev.packageName }
-        last?.takeIf { !isSystemService(it) }
+        // Use a 2s window. Prefer ACTIVITY_RESUMED (type 7) which only fires for the
+        // true top activity — not freeform floating windows. Fall back to MOVE_TO_FOREGROUND.
+        val events = usm.queryEvents(now - 2000, now) ?: return null
+        val ev = UsageEvents.Event()
+        var lastFg: String? = null
+        var lastFgTime = 0L
+        var lastResumed: String? = null
+        var lastResumedTime = 0L
+        while (events.hasNextEvent()) {
+            events.getNextEvent(ev)
+            when (ev.eventType) {
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> if (ev.timeStamp > lastFgTime) { lastFg = ev.packageName; lastFgTime = ev.timeStamp }
+                7 /* ACTIVITY_RESUMED */ -> if (ev.timeStamp > lastResumedTime) { lastResumed = ev.packageName; lastResumedTime = ev.timeStamp }
+            }
+        }
+        // Prefer ACTIVITY_RESUMED; it doesn't fire for freeform overlays
+        val pkg = (lastResumed ?: lastFg)?.takeIf { !isSystemService(it) }
+        pkg
     } catch (e: Exception) { null }
 
     private fun isLauncherPkg(p: String) =

@@ -64,12 +64,12 @@ if [ -n "$ZRAM_SIZE" ] && [ -f /sys/block/zram0/disksize ]; then
     CUR_SIZE=$(cat /sys/block/zram0/disksize 2>/dev/null)
     CUR_ALGO=$(cat /sys/block/zram0/comp_algorithm 2>/dev/null | grep -o '\[.*\]' | tr -d '[]')
     if [ "$CUR_SIZE" != "$ZRAM_SIZE" ] || [ "$CUR_ALGO" != "$ZRAM_ALGO" ]; then
-        swapoff /dev/zram0 2>/dev/null
+        swapoff /dev/block/zram0 2>/dev/null
         echo 1 > /sys/block/zram0/reset 2>/dev/null
         [ -n "$ZRAM_ALGO" ] && echo "$ZRAM_ALGO" > /sys/block/zram0/comp_algorithm 2>/dev/null
         echo "$ZRAM_SIZE" > /sys/block/zram0/disksize 2>/dev/null
-        mkswap /dev/zram0 2>/dev/null
-        swapon /dev/zram0 2>/dev/null
+        mkswap /dev/block/zram0 2>/dev/null
+        swapon /dev/block/zram0 2>/dev/null
     fi
 fi
 

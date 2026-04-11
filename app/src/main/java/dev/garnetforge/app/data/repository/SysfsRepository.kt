@@ -47,7 +47,16 @@ class SysfsRepository(private val context: Context) {
         val raw = Shell.cmd("grep '^gpu_avail_freqs=' $NODES 2>/dev/null | head -1 | cut -d= -f2-")
             .exec().out.firstOrNull()?.trim() ?: ""
         if (raw.isEmpty()) return@withContext emptyList()
-        raw.split(",").mapNotNull { it.trim().toLongOrNull()?.div(1_000_000)?.toInt() }.filter { it > 0 }.sorted()
+        val vals = raw.split(",").mapNotNull { it.trim().toLongOrNull() }.filter { it > 0 }.sorted()
+        if (vals.isEmpty()) return@withContext emptyList()
+        // Detect unit: if max value > 10_000, values are in Hz → divide by 1_000_000
+        // If max value is 100..10000 range, already MHz
+        val maxVal = vals.last()
+        when {
+            maxVal > 100_000_000L -> vals.map { (it / 1_000_000L).toInt() }.filter { it >= 100 }
+            maxVal > 1_000L       -> vals.map { (it / 1_000L).toInt() }.filter { it >= 100 }
+            else                  -> vals.map { it.toInt() }.filter { it >= 100 }
+        }.distinct().sorted()
     }
 
     // ── Live stats ────────────────────────────────────────────────────
@@ -132,12 +141,12 @@ class SysfsRepository(private val context: Context) {
 
     suspend fun writeZram(sizeBytes: Long, algo: String): Unit = withContext(Dispatchers.IO) {
         Shell.cmd(
-            "swapoff /dev/zram0 2>/dev/null || true",
+            "swapoff /dev/block/zram0 2>/dev/null || true",
             "echo 1 > /sys/block/zram0/reset 2>/dev/null",
             "echo $algo > /sys/block/zram0/comp_algorithm 2>/dev/null",
             "echo $sizeBytes > /sys/block/zram0/disksize 2>/dev/null",
-            "mkswap /dev/zram0 2>/dev/null",
-            "swapon -p 5 /dev/zram0 2>/dev/null"
+            "mkswap /dev/block/zram0 2>/dev/null",
+            "swapon /dev/block/zram0 2>/dev/null"
         ).exec()
     }
 
@@ -165,18 +174,20 @@ class SysfsRepository(private val context: Context) {
             val m = line.substring(eq + 1).split(",").mapNotNull { pair ->
                 val ci = pair.indexOf(':'); if (ci <= 0) null else pair.substring(0, ci) to pair.substring(ci + 1)
             }.toMap()
+            val offlined = m["cores"]?.split("+")?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
             pkg to AppProfile(
-                pkg     = pkg,
-                enabled = m["enabled"] == "1",
-                cpu0Min = m["cpu0_min"]?.toIntOrNull(),
-                cpu0Max = m["cpu0_max"]?.toIntOrNull(),
-                cpu4Min = m["cpu4_min"]?.toIntOrNull(),
-                cpu4Max = m["cpu4_max"]?.toIntOrNull(),
-                gpuMin  = m["gpu_min"]?.toIntOrNull(),
-                gpuMax  = m["gpu_max"]?.toIntOrNull(),
-                thermal = m["thermal"],
-                gov0    = m["gov0"],
-                gov4    = m["gov4"],
+                pkg           = pkg,
+                enabled       = m["enabled"] == "1",
+                cpu0Min       = m["cpu0_min"]?.toIntOrNull(),
+                cpu0Max       = m["cpu0_max"]?.toIntOrNull(),
+                cpu4Min       = m["cpu4_min"]?.toIntOrNull(),
+                cpu4Max       = m["cpu4_max"]?.toIntOrNull(),
+                gpuMin        = m["gpu_min"]?.toIntOrNull(),
+                gpuMax        = m["gpu_max"]?.toIntOrNull(),
+                thermal       = m["thermal"],
+                gov0          = m["gov0"],
+                gov4          = m["gov4"],
+                offlinedCores = offlined,
             )
         }.toMap()
     }
@@ -188,9 +199,10 @@ class SysfsRepository(private val context: Context) {
             "grep -v '^${esc}=' $APP_PROFILES > ${APP_PROFILES}.tmp 2>/dev/null || true",
             "[ -f ${APP_PROFILES}.tmp ] && mv ${APP_PROFILES}.tmp $APP_PROFILES || true"
         ).exec()
-        if (profile == null || !profile.enabled) return@withContext
+        if (profile == null) return@withContext
+        // Always persist — even if disabled, so settings survive toggle off/on
         val data = buildString {
-            append("enabled:1")
+            append("enabled:${if (profile.enabled) "1" else "0"}")
             profile.cpu0Min?.let { append(",cpu0_min:$it") }
             profile.cpu0Max?.let { append(",cpu0_max:$it") }
             profile.cpu4Min?.let { append(",cpu4_min:$it") }
@@ -200,6 +212,7 @@ class SysfsRepository(private val context: Context) {
             profile.thermal?.let { append(",thermal:$it") }
             profile.gov0?.let    { append(",gov0:$it") }
             profile.gov4?.let    { append(",gov4:$it") }
+            if (profile.offlinedCores.isNotEmpty()) append(",cores:${profile.offlinedCores.sorted().joinToString("+")}")
         }
         Shell.cmd("printf '${pkg}=${data}\\n' >> $APP_PROFILES").exec()
     }

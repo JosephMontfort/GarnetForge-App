@@ -646,91 +646,34 @@ private fun SectionContent(
     }
 }
 
-// ── Live per-core frequency graph — Canvas-based sparkline style ───────
+// ── Live per-core frequency bars ─────────────────────────────────────
 @Composable
 private fun CoreFreqGrid(cores: List<Int>, freqs: List<Int>, maxFreq: Int, color: Color) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    // Keep a rolling history of 20 samples per core for the sparkline
-    val history = remember(cores) { cores.associate { it to ArrayDeque<Float>(20) } }
-
-    LaunchedEffect(freqs) {
-        cores.forEach { c ->
-            val mhz = freqs.getOrElse(c) { 0 }
-            val frac = (mhz.toFloat() / maxFreq.toFloat()).coerceIn(0f, 1f)
-            val q = history[c] ?: return@forEach
-            if (q.size >= 20) q.removeFirst()
-            q.addLast(frac)
-        }
-    }
-
-    val trackBg  = if (isLight) Color.Black.copy(0.06f)  else Color.White.copy(0.07f)
-    val gridLine = if (isLight) Color.Black.copy(0.06f)  else Color.White.copy(0.06f)
-    val fillAlpha = if (isLight) 0.18f else 0.22f
-
+    val trackBg   = if (isLight) Color.Black.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.08f)
+    val barColor  = if (isLight) color.copy(alpha = 0.7f) else color
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         cores.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { coreIdx ->
-                    val mhz = freqs.getOrElse(coreIdx) { 0 }
-                    val frac = (mhz.toFloat() / maxFreq.toFloat()).coerceIn(0f, 1f)
-                    val animFrac by animateFloatAsState(frac, tween(800), label = "cf$coreIdx")
-                    val animMhz  by animateIntAsState(mhz, tween(800), label = "cm$coreIdx")
-                    val hist = remember(coreIdx) { history[coreIdx] ?: ArrayDeque() }
-
+                    val mhz     = freqs.getOrElse(coreIdx) { 0 }
+                    val frac    = (mhz.toFloat() / maxFreq.toFloat()).coerceIn(0f, 1f)
+                    val animFrac by animateFloatAsState(frac, spring(0.8f, 120f), label = "cf$coreIdx")
+                    val animMhz  by animateIntAsState(mhz, tween(300), label = "cm$coreIdx")
                     Box(
-                        Modifier.weight(1f).height(56.dp).clip(RoundedCornerShape(10.dp)).background(trackBg)
+                        Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(10.dp)).background(trackBg)
                     ) {
-                        // Canvas sparkline
-                        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-                            val w = size.width; val h = size.height
-                            val pts = hist.toList()
-                            if (pts.size < 2) return@Canvas
-
-                            // Subtle horizontal grid lines at 25%, 50%, 75%
-                            listOf(0.25f, 0.5f, 0.75f).forEach { g ->
-                                drawLine(gridLine, Offset(0f, h * (1f - g)), Offset(w, h * (1f - g)), strokeWidth = 0.8f)
-                            }
-
-                            // Build path
-                            val path = androidx.compose.ui.graphics.Path()
-                            val step = w / (pts.size - 1).coerceAtLeast(1)
-                            pts.forEachIndexed { i, v ->
-                                val x = i * step; val y = h * (1f - v)
-                                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                            }
-
-                            // Fill under curve
-                            val fillPath = androidx.compose.ui.graphics.Path().apply {
-                                addPath(path)
-                                lineTo(w, h); lineTo(0f, h); close()
-                            }
-                            drawPath(fillPath, color.copy(alpha = fillAlpha))
-
-                            // Stroke line — stronger in dark, lighter in light
-                            drawPath(path, color.copy(alpha = if (isLight) 0.6f else 0.85f),
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                    width = if (isLight) 1.5f else 2f,
-                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                    join = androidx.compose.ui.graphics.StrokeJoin.Round,
-                                ))
-
-                            // Live dot at current position
-                            val lastX = (pts.lastIndex) * step
-                            val lastY = h * (1f - (pts.lastOrNull() ?: 0f))
-                            drawCircle(color, radius = if (isLight) 3.5f else 4f, center = Offset(lastX, lastY))
-                        }
-
-                        // Labels overlay
-                        Row(
-                            Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 4.dp),
-                            Arrangement.SpaceBetween, Alignment.Bottom
-                        ) {
+                        Box(
+                            Modifier.fillMaxHeight().fillMaxWidth(animFrac)
+                                .background(Brush.horizontalGradient(listOf(barColor.copy(0.45f), barColor)), RoundedCornerShape(10.dp))
+                        )
+                        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                             Text("C$coreIdx",
                                 style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                                color = if (isLight) color.copy(0.8f) else color)
-                            Text(if (mhz == 0) "off" else "${animMhz}M",
+                                color = if (animFrac > 0.4f) Color.White.copy(if (isLight) 0.9f else 1f) else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (mhz == 0) "off" else "$animMhz",
                                 style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
-                                color = if (isLight) color.copy(0.8f) else color)
+                                color = if (animFrac > 0.7f) Color.White.copy(if (isLight) 0.9f else 1f) else barColor)
                         }
                     }
                 }

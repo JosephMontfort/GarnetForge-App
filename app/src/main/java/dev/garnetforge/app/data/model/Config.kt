@@ -41,14 +41,16 @@ data class LiveStats(
     val perCoreFreqMhz: List<Int> = List(8) { 0 },
 )
 
-// Used only by getInstalledApps() internally
 data class ThermalApp(val pkg: String, val label: String, val profile: String = "")
 
-// Per-app full profile — null field = don't override system setting
+// Per-app full profile
+// offlinedCores: bitmask of cores to offline. core0 always stays online.
+// Little cores 1-3 may be offlined (never all 3 at once — keep at least core0).
+// Big cores 4-7 may be offlined (keep at least one big core = core4).
 data class AppProfile(
     val pkg: String,
     val label: String = "",
-    val enabled: Boolean = false,
+    val enabled: Boolean = false,   // whether to APPLY the profile; settings are always stored
     val cpu0Min: Int? = null,
     val cpu0Max: Int? = null,
     val cpu4Min: Int? = null,
@@ -58,6 +60,7 @@ data class AppProfile(
     val thermal: String? = null,
     val gov0: String? = null,
     val gov4: String? = null,
+    val offlinedCores: Set<Int> = emptySet(),  // which cores to take offline (1-3, 5-7 only)
 )
 
 enum class ThermalProfile(val sconfig: String, val label: String) {
