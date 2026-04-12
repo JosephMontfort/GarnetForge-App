@@ -7,8 +7,8 @@ import kotlinx.coroutines.withContext
 
 class ConfigRepository {
 
-    private val CONFIG = "/data/adb/garnetforge/config.prop"
-    private val SET_CFG = "/data/adb/garnetforge/set_cfg.sh"
+    private val CONFIG = "/data/data/dev.garnetforge.app/files/garnetforge/config.prop"
+    private val SET_CFG = "/data/data/dev.garnetforge.app/files/garnetforge/set_cfg.sh"
 
     suspend fun load(): GarnetConfig = withContext(Dispatchers.IO) {
         val raw = Shell.cmd("cat $CONFIG 2>/dev/null").exec().out.associate { line ->

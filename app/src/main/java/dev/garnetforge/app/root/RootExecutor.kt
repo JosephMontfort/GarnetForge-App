@@ -24,18 +24,18 @@ object RootExecutor {
 
     /** Read config.prop key. */
     suspend fun getConfig(key: String): String? = withContext(Dispatchers.IO) {
-        Shell.cmd("grep '^${key.replace(".", "\\.")}=' /data/adb/garnetforge/config.prop 2>/dev/null | head -1 | cut -d= -f2-")
+        Shell.cmd("grep '^${key.replace(".", "\\.")}=' /data/data/dev.garnetforge.app/files/garnetforge/config.prop 2>/dev/null | head -1 | cut -d= -f2-")
             .exec().out.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
     }
 
     /** Write config.prop key via set_cfg.sh. */
     suspend fun setConfig(key: String, value: String): Boolean = withContext(Dispatchers.IO) {
-        Shell.cmd("sh /data/adb/garnetforge/set_cfg.sh \"$key\" \"$value\"").exec().isSuccess
+        Shell.cmd("sh /data/data/dev.garnetforge.app/files/garnetforge/set_cfg.sh \"$key\" \"$value\"").exec().isSuccess
     }
 
     /** Check if module is installed. */
     suspend fun isModuleInstalled(): Boolean = withContext(Dispatchers.IO) {
-        Shell.cmd("[ -f /data/adb/garnetforge/config.prop ] && echo yes")
+        Shell.cmd("[ -f /data/data/dev.garnetforge.app/files/garnetforge/config.prop ] && echo yes")
             .exec().out.firstOrNull() == "yes"
     }
 

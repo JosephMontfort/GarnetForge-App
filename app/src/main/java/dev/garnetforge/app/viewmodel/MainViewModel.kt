@@ -41,6 +41,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _appsLoading  = MutableStateFlow(false)
     private val _deviceInfo   = MutableStateFlow(DeviceInfo())
     private val _coreStates   = MutableStateFlow(List(8) { true })
+    private val _liveNodes    = MutableStateFlow(dev.garnetforge.app.data.model.LiveNodeValues())
+    private val _nodeDefaults = MutableStateFlow(dev.garnetforge.app.data.model.NodeDefaults())
     private val _availFreqsL  = MutableStateFlow<List<Int>>(emptyList())
     private val _availFreqsB  = MutableStateFlow<List<Int>>(emptyList())
     private val _availFreqsGpu= MutableStateFlow<List<Int>>(emptyList())
@@ -89,7 +91,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshCoreStates()
         loadDeviceInfo()
         loadAvailableFreqs()
+        loadNodeDefaults()
+        refreshLiveNodes()
         startPolling()
+    }
+
+    private fun loadNodeDefaults() = viewModelScope.launch {
+        runCatching { _nodeDefaults.value = sysfsRepo.readNodeDefaults() }
+    }
+
+    fun refreshLiveNodes() = viewModelScope.launch {
+        runCatching { _liveNodes.value = sysfsRepo.readLiveNodes() }
     }
 
     private fun loadAvailableFreqs() = viewModelScope.launch {
@@ -104,7 +116,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun refreshSconfig() = viewModelScope.launch { runCatching { _sconfig.value = sysfsRepo.getCurrentSconfig() } }
 
     fun onTabSelected() = viewModelScope.launch {
-        runCatching { refreshConfig(); refreshSconfig(); refreshCoreStates() }
+        runCatching { refreshConfig(); refreshSconfig(); refreshCoreStates(); refreshLiveNodes() }
     }
 
     fun refreshCoreStates() = viewModelScope.launch {
@@ -188,6 +200,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 "read_ahead_kb"             -> sysfsRepo.writeReadAhead(value.toIntOrNull() ?: return@runCatching)
                 "tcp_algo"                  -> sysfsRepo.writeTcp(value)
                 "net_rxqueuelen"            -> sysfsRepo.writeNetRxqueuelen(value.toIntOrNull() ?: return@runCatching)
+                "gpu_pwrlevel"              -> sysfsRepo.writeGpuPwrlevel(value.toIntOrNull() ?: return@runCatching)
+                "gpu_idle_timer"            -> sysfsRepo.writeGpuIdleTimer(value.toIntOrNull() ?: return@runCatching)
+                "thermal_boost"             -> sysfsRepo.writeThermalBoost(value == "1")
             }
         }
     }
@@ -250,6 +265,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         "read_ahead_kb"                -> c.copy(readAheadKb          = value.toIntOrNull() ?: c.readAheadKb)
         "tcp_algo"                     -> c.copy(tcpAlgo              = value)
         "net_rxqueuelen"               -> c.copy(netRxqueuelen        = value.toIntOrNull() ?: c.netRxqueuelen)
+        "gpu_idle_timer"               -> c.copy(gpuIdleTimer          = value.toIntOrNull() ?: c.gpuIdleTimer)
+        "thermal_boost"                -> c.copy(thermalBoost          = value == "1")
         else                           -> c
     }
 }

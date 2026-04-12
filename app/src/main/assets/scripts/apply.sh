@@ -1,8 +1,8 @@
 #!/system/bin/sh
-MODDIR=/data/adb/garnetforge
+MODDIR=/data/data/dev.garnetforge.app/files/garnetforge
 NODES="$MODDIR/nodes.prop"
 CONFIG="$MODDIR/config.prop"
-LOG=/data/adb/garnetforge/garnetforge.log
+LOG=/data/data/dev.garnetforge.app/files/garnetforge/garnetforge.log
 
 log() { printf '[%s] APPLY: %s\n' "$(date '+%H:%M:%S')" "$1" >> "$LOG"; }
 

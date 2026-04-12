@@ -1,6 +1,6 @@
 #!/system/bin/sh
 KEY="$1"; VAL="$2"
-CONFIG="/data/adb/garnetforge/config.prop"
+CONFIG="/data/data/dev.garnetforge.app/files/garnetforge/config.prop"
 TMP="${CONFIG}.tmp"
 [ -z "$KEY" ] && exit 1
 [ -f "$CONFIG" ] || exit 1

@@ -25,7 +25,7 @@ class ThermalTileService : TileService() {
             val next = CYCLE[(curIdx + 1) % CYCLE.size]
             Shell.cmd("printf '%s' '${next.sconfig}' > $SCONFIG 2>/dev/null").exec()
             // Also update config.prop so it persists across module apply
-            Shell.cmd("sh /data/adb/garnetforge/set_cfg.sh thermal_profile ${next.sconfig} 2>/dev/null").exec()
+            Shell.cmd("sh /data/data/dev.garnetforge.app/files/garnetforge/set_cfg.sh thermal_profile ${next.sconfig} 2>/dev/null").exec()
             updateTile()
         }
     }

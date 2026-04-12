@@ -64,6 +64,8 @@ class MainActivity : ComponentActivity() {
                 val coreStates      by vm.coreStates.collectAsState()
                 val perCoreFreqMhz  by vm.perCoreFreqMhz.collectAsState()
                 val availFreqsL     by vm.availFreqsL.collectAsState()
+                val liveNodes       by vm.liveNodes.collectAsState()
+                val nodeDefaults    by vm.nodeDefaults.collectAsState()
                 val availFreqsB     by vm.availFreqsB.collectAsState()
                 val availFreqsGpu   by vm.availFreqsGpu.collectAsState()
 
@@ -139,7 +141,7 @@ class MainActivity : ComponentActivity() {
                                     DashboardScreen(stats, config, sconfig, onClearRam = { vm.clearRam() })
                                 }
                                 composable(Screen.Tuning.route) {
-                                    TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, blurEnabled = blurEnabled,
+                                    TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, blurEnabled = blurEnabled,
                                         onSet = { k, v -> vm.setConfig(k, v) },
                                         onProfileSelected = { vm.applyThermalProfile(it) },
                                         onToggleCore = { vm.toggleCore(it) })

@@ -14,7 +14,7 @@ import java.time.LocalTime
 class SysfsRepository(private val context: Context) {
 
     companion object {
-        const val INSTALL_DIR   = "/data/adb/garnetforge"
+        const val INSTALL_DIR   = "/data/data/dev.garnetforge.app/files/garnetforge"
         const val THERMAL_APPS  = "$INSTALL_DIR/thermal_apps.prop"
         const val APP_PROFILES  = "$INSTALL_DIR/app_profiles.prop"
         const val SCONFIG       = "/sys/class/thermal/thermal_message/sconfig"
@@ -30,6 +30,10 @@ class SysfsRepository(private val context: Context) {
         const val GPU_MIN       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/min_freq"
         const val GPU_CUR       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/cur_freq"
         const val SWAPPINESS    = "/proc/sys/vm/swappiness"
+        const val GPU_PWRLEVEL  = "/sys/class/kgsl/kgsl-3d0/pwrlevel"
+        const val GPU_IDLE_TIMER= "/sys/class/kgsl/kgsl-3d0/idle_timer"
+        const val THERMAL_BOOST = "/sys/class/thermal/thermal_message/boost"
+        const val DEFAULTS      = "$INSTALL_DIR/defaults.prop"
         const val TCP_ALGO      = "/proc/sys/net/ipv4/tcp_congestion_control"
         const val NODES         = "$INSTALL_DIR/nodes.prop"
     }
@@ -57,6 +61,57 @@ class SysfsRepository(private val context: Context) {
             maxVal > 1_000L       -> vals.map { (it / 1_000L).toInt() }.filter { it >= 100 }
             else                  -> vals.map { it.toInt() }.filter { it >= 100 }
         }.distinct().sorted()
+    }
+
+    // ── Read defaults from defaults.prop ─────────────────────────────
+    suspend fun readNodeDefaults(): dev.garnetforge.app.data.model.NodeDefaults = withContext(Dispatchers.IO) {
+        val raw = Shell.cmd("cat $DEFAULTS 2>/dev/null").exec().out.associate { line ->
+            val eq = line.indexOf('='); if (eq > 0) line.substring(0, eq) to line.substring(eq + 1) else "" to ""
+        }
+        fun i(k: String, d: Int) = raw[k]?.trim()?.toIntOrNull() ?: d
+        fun s(k: String, d: String) = raw[k]?.trim()?.ifEmpty { null } ?: d
+        dev.garnetforge.app.data.model.NodeDefaults(
+            vmSwappiness             = i("default_vm_swappiness", 100),
+            vmDirtyRatio             = i("default_vm_dirty_ratio", 20),
+            vmDirtyBackgroundRatio   = i("default_vm_dirty_background_ratio", 5),
+            vmVfsCachePressure       = i("default_vm_vfs_cache_pressure", 100),
+            readAheadKb              = i("default_read_ahead_kb", 512),
+            tcpAlgo                  = s("default_tcp_algo", "cubic"),
+            netRxqueuelen            = i("default_net_rxqueuelen", 1000),
+            gpuIdleTimer             = i("default_gpu_idle_timer", 64),
+        )
+    }
+
+    // ── Read live node values for tuning screen ───────────────────────
+    suspend fun readLiveNodes(): dev.garnetforge.app.data.model.LiveNodeValues = withContext(Dispatchers.IO) {
+        val raw = Shell.cmd(
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' " +
+            ""\$(cat /proc/sys/vm/swappiness 2>/dev/null)" " +
+            ""\$(cat /proc/sys/vm/dirty_ratio 2>/dev/null)" " +
+            ""\$(cat /proc/sys/vm/dirty_background_ratio 2>/dev/null)" " +
+            ""\$(cat /proc/sys/vm/vfs_cache_pressure 2>/dev/null)" " +
+            ""\$(for ra in /sys/block/*/queue/read_ahead_kb; do [ -f \"\$ra\" ] && cat \"\$ra\" && break; done 2>/dev/null)" " +
+            ""\$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null)" " +
+            ""\$(ip link show 2>/dev/null | grep -m1 'qlen' | sed 's/.*qlen //' | cut -d' ' -f1)" " +
+            ""\$(cat $GPU_PWRLEVEL 2>/dev/null)" " +
+            ""\$(cat $GPU_IDLE_TIMER 2>/dev/null)""
+        ).exec().out.firstOrNull() ?: ""
+        val p = raw.split("|")
+        fun pi(i: Int) = p.getOrNull(i)?.trim()?.toIntOrNull() ?: -1
+        fun ps(i: Int) = p.getOrNull(i)?.trim() ?: ""
+        val boost = Shell.cmd("cat $THERMAL_BOOST 2>/dev/null").exec().out.firstOrNull()?.trim() == "1"
+        dev.garnetforge.app.data.model.LiveNodeValues(
+            vmSwappiness           = pi(0),
+            vmDirtyRatio           = pi(1),
+            vmDirtyBackgroundRatio = pi(2),
+            vmVfsCachePressure     = pi(3),
+            readAheadKb            = pi(4),
+            tcpAlgo                = ps(5),
+            netRxqueuelen          = pi(6),
+            gpuPwrlevel            = pi(7),
+            gpuIdleTimer           = pi(8),
+            thermalBoost           = boost,
+        )
     }
 
     // ── Live stats ────────────────────────────────────────────────────
@@ -160,6 +215,18 @@ class SysfsRepository(private val context: Context) {
 
     suspend fun writeTcp(algo: String): Unit = withContext(Dispatchers.IO) {
         Shell.cmd("printf '%s' '$algo' > $TCP_ALGO 2>/dev/null").exec()
+    }
+
+    suspend fun writeGpuPwrlevel(level: Int): Unit = withContext(Dispatchers.IO) {
+        Shell.cmd("echo $level > $GPU_PWRLEVEL 2>/dev/null").exec()
+    }
+
+    suspend fun writeGpuIdleTimer(ms: Int): Unit = withContext(Dispatchers.IO) {
+        Shell.cmd("echo $ms > $GPU_IDLE_TIMER 2>/dev/null").exec()
+    }
+
+    suspend fun writeThermalBoost(on: Boolean): Unit = withContext(Dispatchers.IO) {
+        Shell.cmd("echo ${if (on) "1" else "0"} > $THERMAL_BOOST 2>/dev/null").exec()
     }
 
     suspend fun writeNetRxqueuelen(v: Int): Unit = withContext(Dispatchers.IO) {

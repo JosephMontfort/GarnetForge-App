@@ -72,3 +72,30 @@ enum class ThermalProfile(val sconfig: String, val label: String) {
         fun fromSconfig(s: String?) = values().find { it.sconfig == s } ?: DEFAULT
     }
 }
+
+// Live node values — read from sysfs when tuning tab opens
+data class LiveNodeValues(
+    val vmSwappiness: Int = -1,
+    val vmDirtyRatio: Int = -1,
+    val vmDirtyBackgroundRatio: Int = -1,
+    val vmVfsCachePressure: Int = -1,
+    val readAheadKb: Int = -1,
+    val tcpAlgo: String = "",
+    val netRxqueuelen: Int = -1,
+    val gpuPwrlevel: Int = -1,
+    val gpuIdleTimer: Int = -1,
+    val thermalBoost: Boolean = false,
+)
+
+// Default values — read from defaults.prop (captured after clean boot)
+data class NodeDefaults(
+    val vmSwappiness: Int = 100,
+    val vmDirtyRatio: Int = 20,
+    val vmDirtyBackgroundRatio: Int = 5,
+    val vmVfsCachePressure: Int = 100,
+    val readAheadKb: Int = 512,
+    val tcpAlgo: String = "cubic",
+    val netRxqueuelen: Int = 1000,
+    val gpuIdleTimer: Int = 64,
+    val thermalBoostDefault: Boolean = false,
+)

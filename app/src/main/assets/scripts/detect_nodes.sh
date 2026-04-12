@@ -1,5 +1,5 @@
 #!/system/bin/sh
-MODDIR=/data/adb/garnetforge
+MODDIR=/data/data/dev.garnetforge.app/files/garnetforge
 NODES="$MODDIR/nodes.prop"
 log() { printf '[%s] DETECT: %s\n' "$(date '+%H:%M:%S')" "$1" >> "$MODDIR/garnetforge.log"; }
 log "=== Node detection started ==="

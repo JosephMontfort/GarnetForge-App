@@ -73,6 +73,8 @@ fun TuningScreen(
     availFreqsL: List<Int>,
     availFreqsB: List<Int>,
     availFreqsGpu: List<Int>,
+    liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
+    nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
     blurEnabled: Boolean,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
@@ -178,6 +180,8 @@ fun TuningScreen(
                         availFreqsL = availFreqsL,
                         availFreqsB = availFreqsB,
                         availFreqsGpu = availFreqsGpu,
+                        liveNodes   = liveNodes,
+                        nodeDefaults= nodeDefaults,
                         onSet       = onSet,
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
@@ -202,6 +206,8 @@ private fun HeroOverlay(
     availFreqsL: List<Int>,
     availFreqsB: List<Int>,
     availFreqsGpu: List<Int>,
+    liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
+    nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
     onToggleCore: (Int) -> Unit,
@@ -267,7 +273,7 @@ private fun HeroOverlay(
         val targetW = fullW * 0.88f
         val targetH = with(density) {
             when(sectionId) {
-                "thermal"  -> 360.dp.toPx()
+                "thermal"  -> 420.dp.toPx()
                 "io"       -> 440.dp.toPx()
                 "network"  -> 440.dp.toPx()
                 "memory"   -> 560.dp.toPx()
@@ -309,7 +315,7 @@ private fun HeroOverlay(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, onSet, onProfileSelected, onToggleCore)
+                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, onSet, onProfileSelected, onToggleCore)
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -462,6 +468,8 @@ private fun SectionContent(
     id: String, config: GarnetConfig, sconfig: String,
     coreStates: List<Boolean>, perCoreFreqMhz: List<Int>,
     availFreqsL: List<Int>, availFreqsB: List<Int>, availFreqsGpu: List<Int>,
+    liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
+    nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
     onSet: (String,String)->Unit,
     onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
 ) {
@@ -474,10 +482,6 @@ private fun SectionContent(
     val tPurple = if (isLight) Color(0xFF6A1B9A) else PurpleLight
     val textSub = MaterialTheme.colorScheme.onSurfaceVariant
 
-    // Defaults for long-press revert (read from node defaults)
-    val defaultCpuL = remember { mapOf("min" to 691200, "max" to 1958400) }
-    val defaultCpuB = remember { mapOf("min" to 691200, "max" to 2400000) }
-
     when (id) {
         "cpu_little" -> {
             val freqL = availFreqsL.ifEmpty { CPU_L }
@@ -487,7 +491,7 @@ private fun SectionContent(
             CoreFreqGrid(cores = (0..3).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzL, color = tRed)
             Spacer(Modifier.height(8.dp))
             ChipRowTuning("Governor", GOVS, config.cpuPolicy0Governor,
-                info = "CPU frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy0_governor", it) }
+                info = "Frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy0_governor", it) }
             Spacer(Modifier.height(8.dp))
             var minI by remember(config.cpuPolicy0Min, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Min)) }
             var maxI by remember(config.cpuPolicy0Max, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Max)) }
@@ -510,7 +514,7 @@ private fun SectionContent(
             CoreFreqGrid(cores = (4..7).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzB, color = tRed)
             Spacer(Modifier.height(8.dp))
             ChipRowTuning("Governor", GOVS, config.cpuPolicy4Governor,
-                info = "CPU frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy4_governor", it) }
+                info = "Frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy4_governor", it) }
             Spacer(Modifier.height(8.dp))
             var minI by remember(config.cpuPolicy4Min, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Min)) }
             var maxI by remember(config.cpuPolicy4Max, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Max)) }
@@ -543,63 +547,84 @@ private fun SectionContent(
             }
         }
         "gpu" -> {
+            // GPU freqs from scanned nodes (MHz)
+            val freqG = availFreqsGpu.ifEmpty { GPU_S }
             Text("GPU", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tPurple)
             Spacer(Modifier.height(8.dp))
-            var minI by remember(config.gpuMin) { mutableIntStateOf(ci(GPU_S, config.gpuMin)) }
-            var maxI by remember(config.gpuMax) { mutableIntStateOf(ci(GPU_S, config.gpuMax)) }
-            var pl   by remember(config.gpuPwrlevel) { mutableIntStateOf(config.gpuPwrlevel) }
-            RevertableSlider("Min Frequency", minI.toFloat(), 0f, GPU_S.lastIndex.toFloat(), GPU_S.lastIndex-1,
-                "${GPU_S[minI]} MHz", tPurple, { minI=it.toInt() },
-                onRevert = { minI = ci(GPU_S, 295); onSet("gpu_min", GPU_S[minI].toString()) },
+            var minI by remember(config.gpuMin, freqG) { mutableIntStateOf(ci(freqG, config.gpuMin)) }
+            var maxI by remember(config.gpuMax, freqG) { mutableIntStateOf(ci(freqG, config.gpuMax)) }
+            // Power level: live read, range 0..8 (0=max perf, 8=min)
+            val livePl = liveNodes.gpuPwrlevel
+            var pl by remember(config.gpuPwrlevel, livePl) { mutableIntStateOf(if (livePl >= 0) livePl else config.gpuPwrlevel) }
+            // Idle timer: live read, 1..1000 ms
+            val liveIt = liveNodes.gpuIdleTimer
+            var idleTimer by remember(config.gpuIdleTimer, liveIt) { mutableIntStateOf(if (liveIt >= 0) liveIt else config.gpuIdleTimer) }
+            RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqG.lastIndex.toFloat(), (freqG.size-2).coerceAtLeast(0),
+                "${freqG.getOrElse(minI){0}} MHz", tPurple, { minI=it.toInt() },
+                onRevert = { minI = 0; onSet("gpu_min", freqG.first().toString()) },
                 info = "Minimum GPU frequency. Higher = smoother at cost of battery.",
-            ) { onSet("gpu_min", GPU_S[minI].toString()) }
-            RevertableSlider("Max Frequency", maxI.toFloat(), 0f, GPU_S.lastIndex.toFloat(), GPU_S.lastIndex-1,
-                "${GPU_S[maxI]} MHz", tPurple, { maxI=it.toInt() },
-                onRevert = { maxI = ci(GPU_S, 940); onSet("gpu_max", GPU_S[maxI].toString()) },
+            ) { onSet("gpu_min", freqG[minI].toString()) }
+            RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqG.lastIndex.toFloat(), (freqG.size-2).coerceAtLeast(0),
+                "${freqG.getOrElse(maxI){0}} MHz", tPurple, { maxI=it.toInt() },
+                onRevert = { maxI = freqG.lastIndex; onSet("gpu_max", freqG.last().toString()) },
                 info = "Maximum GPU frequency. Limit for thermals during gaming.",
-            ) { onSet("gpu_max", GPU_S[maxI].toString()) }
-            RevertableSlider("Power Level", pl.toFloat(), 0f, 8f, 7,
+            ) { onSet("gpu_max", freqG[maxI].toString()) }
+            // Power level — continuous 0-8
+            RevertableSlider("Power Level", pl.toFloat(), 0f, 8f, 0,
                 "$pl (0=max perf, 8=min)", tPurple, { pl=it.toInt() },
                 onRevert = { pl = 0; onSet("gpu_pwrlevel", "0") },
-                info = "GPU power level override. 0 = full performance, 8 = minimum power.",
+                info = "GPU power level override. 0 = max performance, 8 = minimum power. Writes /sys/class/kgsl/kgsl-3d0/pwrlevel.",
             ) { onSet("gpu_pwrlevel", pl.toString()) }
+            // Idle timer — continuous 1-1000ms
+            RevertableSlider("Idle Timer", idleTimer.toFloat(), 1f, 1000f, 0,
+                "$idleTimer ms", tPurple, { idleTimer=it.toInt() },
+                onRevert = { idleTimer = nodeDefaults.gpuIdleTimer; onSet("gpu_idle_timer", nodeDefaults.gpuIdleTimer.toString()) },
+                info = "GPU goes idle after this many ms of no work. Lower = faster idle, more battery saving.",
+            ) { onSet("gpu_idle_timer", idleTimer.toString()) }
         }
         "memory" -> {
             Text("Memory & VM", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tBlue)
             Spacer(Modifier.height(8.dp))
-            var swap    by remember(config.vmSwappiness)              { mutableIntStateOf(config.vmSwappiness) }
-            var dirty   by remember(config.vmDirtyRatio)              { mutableIntStateOf(config.vmDirtyRatio) }
-            var dirtyBg by remember(config.vmDirtyBackgroundRatio)    { mutableIntStateOf(config.vmDirtyBackgroundRatio) }
-            var vfs     by remember(config.vmVfsCachePressure)        { mutableIntStateOf(config.vmVfsCachePressure) }
-            var zI      by remember(config.zramSize)                  { mutableIntStateOf(ZRAM_B.indexOfFirst { it == config.zramSize }.coerceAtLeast(0)) }
-            RevertableSlider("Swappiness", swap.toFloat(), 0f, 200f, 19,
+            // Use live node values as the initial state; fall back to config
+            val initSwap   = if (liveNodes.vmSwappiness >= 0)           liveNodes.vmSwappiness           else config.vmSwappiness
+            val initDirty  = if (liveNodes.vmDirtyRatio >= 0)           liveNodes.vmDirtyRatio           else config.vmDirtyRatio
+            val initDirtyBg= if (liveNodes.vmDirtyBackgroundRatio >= 0) liveNodes.vmDirtyBackgroundRatio else config.vmDirtyBackgroundRatio
+            val initVfs    = if (liveNodes.vmVfsCachePressure >= 0)     liveNodes.vmVfsCachePressure     else config.vmVfsCachePressure
+            val initZI     = ZRAM_B.indexOfFirst { it == config.zramSize }.coerceAtLeast(0)
+            var swap    by remember(initSwap)    { mutableIntStateOf(initSwap) }
+            var dirty   by remember(initDirty)   { mutableIntStateOf(initDirty) }
+            var dirtyBg by remember(initDirtyBg) { mutableIntStateOf(initDirtyBg) }
+            var vfs     by remember(initVfs)     { mutableIntStateOf(initVfs) }
+            var zI      by remember(config.zramSize) { mutableIntStateOf(initZI) }
+            // Continuous sliders (steps=0) — these are arbitrary kernel values, not discrete
+            RevertableSlider("Swappiness", swap.toFloat(), 0f, 200f, 0,
                 "$swap", tBlue, { swap = it.toInt() },
-                onRevert = { swap = 100; onSet("vm_swappiness", "100") },
-                info = "How aggressively kernel swaps RAM. 0 = prefer RAM, 100 = default, 200 = max swap.",
+                onRevert = { swap = nodeDefaults.vmSwappiness; onSet("vm_swappiness", nodeDefaults.vmSwappiness.toString()) },
+                info = "How aggressively kernel swaps. 0 = prefer RAM, 100 = balanced, 200 = max swap.",
             ) { onSet("vm_swappiness", swap.toString()) }
-            RevertableSlider("Dirty Ratio", dirty.toFloat(), 1f, 90f, 17,
+            RevertableSlider("Dirty Ratio", dirty.toFloat(), 1f, 90f, 0,
                 "$dirty %", tBlue, { dirty = it.toInt() },
-                onRevert = { dirty = 20; onSet("vm_dirty_ratio", "20") },
-                info = "Max dirty memory % before process blocks to write. Lower = more frequent writes.",
+                onRevert = { dirty = nodeDefaults.vmDirtyRatio; onSet("vm_dirty_ratio", nodeDefaults.vmDirtyRatio.toString()) },
+                info = "Max dirty memory % before process blocks to write.",
             ) { onSet("vm_dirty_ratio", dirty.toString()) }
-            RevertableSlider("Dirty BG Ratio", dirtyBg.toFloat(), 1f, 50f, 24,
+            RevertableSlider("Dirty BG Ratio", dirtyBg.toFloat(), 1f, 50f, 0,
                 "$dirtyBg %", tBlue, { dirtyBg = it.toInt() },
-                onRevert = { dirtyBg = 5; onSet("vm_dirty_background_ratio", "5") },
-                info = "Dirty memory % that triggers background writeback. Lower = more frequent flushing.",
+                onRevert = { dirtyBg = nodeDefaults.vmDirtyBackgroundRatio; onSet("vm_dirty_background_ratio", nodeDefaults.vmDirtyBackgroundRatio.toString()) },
+                info = "Dirty memory % that triggers background writeback.",
             ) { onSet("vm_dirty_background_ratio", dirtyBg.toString()) }
-            RevertableSlider("VFS Cache Pressure", vfs.toFloat(), 10f, 500f, 24,
+            RevertableSlider("VFS Cache Pressure", vfs.toFloat(), 10f, 500f, 0,
                 "$vfs", tBlue, { vfs = it.toInt() },
-                onRevert = { vfs = 100; onSet("vm_vfs_cache_pressure", "100") },
-                info = "Tendency to reclaim inode/dentry cache. Lower = keep more cache, higher = reclaim faster.",
+                onRevert = { vfs = nodeDefaults.vmVfsCachePressure; onSet("vm_vfs_cache_pressure", nodeDefaults.vmVfsCachePressure.toString()) },
+                info = "Tendency to reclaim inode/dentry cache. 100 = kernel default.",
             ) { onSet("vm_vfs_cache_pressure", vfs.toString()) }
             RevertableSlider("ZRAM Size", zI.toFloat(), 0f, 3f, 2,
                 "${zI + 1} GB", tBlue, { zI = it.toInt() },
                 onRevert = { zI = 3; onSet("zram_size", ZRAM_B[3].toString()) },
-                info = "Compressed swap size in RAM. Applied immediately via ZRAM reset+mkswap.",
+                info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.",
             ) { onSet("zram_size", ZRAM_B[zI].toString()) }
             Spacer(Modifier.height(4.dp))
             ChipRowTuning("ZRAM Algorithm", ZRAM_ALGOS, config.zramAlgo,
-                info = "Compression algorithm for ZRAM. lz4 = fastest, zstd = best ratio, lzo = balanced.") { onSet("zram_algo", it) }
+                info = "Compression: lz4 = fastest, zstd = best ratio, lzo = balanced.") { onSet("zram_algo", it) }
         }
         "thermal" -> {
             Text("Thermal Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tRed)
@@ -615,36 +640,53 @@ private fun SectionContent(
             FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 ThermalProfile.values().forEach { p -> ProfileChip(p.label, sconfig==p.sconfig) { onProfileSelected(p) } }
             }
+            Spacer(Modifier.height(16.dp))
+            // Thermal Boost
+            val boostOn = liveNodes.thermalBoost
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Thermal Boost", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Writes /sys/class/thermal/thermal_message/boost",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                FancyToggle(boostOn) { onSet("thermal_boost", if (it) "1" else "0") }
+            }
         }
         "io" -> {
             Text("I/O", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tCool)
             Spacer(Modifier.height(8.dp))
             ChipRowTuning("Scheduler", listOf("bfq","mq-deadline","kyber","none"), config.ioScheduler,
-                info = "Block I/O scheduler. bfq = best for interactive, mq-deadline = low latency, kyber = throughput.") { onSet("io_scheduler", it) }
+                info = "Block I/O scheduler. bfq = interactive, mq-deadline = low latency, kyber = throughput.") { onSet("io_scheduler", it) }
             Spacer(Modifier.height(12.dp))
-            val raI = remember(config.readAheadKb) { READ_AHEAD_VALS.indexOfFirst { it == config.readAheadKb }.coerceAtLeast(0) }
-            var readAheadIdx by remember { mutableIntStateOf(raI) }
+            // Read-ahead: discrete list, use indexing
+            val liveRa = liveNodes.readAheadKb
+            val initRa = if (liveRa > 0) READ_AHEAD_VALS.indexOfFirst { it == liveRa }.let { if (it < 0) READ_AHEAD_VALS.indexOfFirst { v -> v >= liveRa }.coerceAtLeast(0) else it }
+                         else READ_AHEAD_VALS.indexOfFirst { it == config.readAheadKb }.coerceAtLeast(0)
+            var readAheadIdx by remember(liveRa, config.readAheadKb) { mutableIntStateOf(initRa) }
             RevertableSlider("Read-Ahead", readAheadIdx.toFloat(), 0f, READ_AHEAD_VALS.lastIndex.toFloat(), READ_AHEAD_VALS.lastIndex - 1,
                 "${READ_AHEAD_VALS[readAheadIdx]} KB", tCool, { readAheadIdx = it.toInt() },
-                onRevert = { readAheadIdx = READ_AHEAD_VALS.indexOf(128).coerceAtLeast(0); onSet("read_ahead_kb", "128") },
-                info = "Pre-fetch buffer size per block device. Higher = better sequential read, more RAM used.",
+                onRevert = { readAheadIdx = READ_AHEAD_VALS.indexOfFirst { it == nodeDefaults.readAheadKb }.coerceAtLeast(0); onSet("read_ahead_kb", nodeDefaults.readAheadKb.toString()) },
+                info = "Pre-fetch buffer per block device. Higher = better sequential read, more RAM.",
             ) { onSet("read_ahead_kb", READ_AHEAD_VALS[readAheadIdx].toString()) }
         }
         "network" -> {
             Text("Network", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tBlue)
             Spacer(Modifier.height(8.dp))
-            ChipRowTuning("TCP Congestion", listOf("cubic","reno","westwood","bbr"), config.tcpAlgo,
-                info = "TCP congestion control algorithm. bbr = low latency+high throughput, cubic = default Linux, westwood = good for mobile.") { onSet("tcp_algo", it) }
+            val liveTcp = liveNodes.tcpAlgo.ifEmpty { config.tcpAlgo }
+            ChipRowTuning("TCP Congestion", listOf("cubic","reno","westwood","bbr"), liveTcp,
+                info = "TCP congestion control. bbr = low latency+high throughput, cubic = Linux default.") { onSet("tcp_algo", it) }
             Spacer(Modifier.height(12.dp))
-            var rxq by remember(config.netRxqueuelen) { mutableIntStateOf(config.netRxqueuelen) }
-            RevertableSlider("TX Queue Length", rxq.toFloat(), 100f, 10000f, 98,
+            val liveRxq = liveNodes.netRxqueuelen
+            val initRxq = if (liveRxq > 0) liveRxq else config.netRxqueuelen
+            var rxq by remember(liveRxq, config.netRxqueuelen) { mutableIntStateOf(initRxq) }
+            // Continuous slider — queue len is arbitrary
+            RevertableSlider("TX Queue Length", rxq.toFloat(), 100f, 10000f, 0,
                 "$rxq", tBlue, { rxq = it.toInt() },
-                onRevert = { rxq = 1000; onSet("net_rxqueuelen", "1000") },
-                info = "Network interface TX queue depth. Higher = better throughput under load, higher latency.",
+                onRevert = { rxq = nodeDefaults.netRxqueuelen; onSet("net_rxqueuelen", nodeDefaults.netRxqueuelen.toString()) },
+                info = "Network interface TX queue depth. Higher = better throughput under load.",
             ) { onSet("net_rxqueuelen", rxq.toString()) }
         }
     }
-}
 
 // ── Live per-core frequency bars ─────────────────────────────────────
 @Composable
