@@ -61,6 +61,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val availFreqsL   : StateFlow<List<Int>>           = _availFreqsL.asStateFlow()
     val availFreqsB   : StateFlow<List<Int>>           = _availFreqsB.asStateFlow()
     val availFreqsGpu : StateFlow<List<Int>>           = _availFreqsGpu.asStateFlow()
+    val liveNodes     : StateFlow<LiveNodeValues>      = _liveNodes.asStateFlow()
+    val nodeDefaults  : StateFlow<NodeDefaults>        = _nodeDefaults.asStateFlow()
 
     val perCoreFreqMhz: StateFlow<List<Int>> = _stats.map { it.perCoreFreqMhz }
         .stateIn(viewModelScope, SharingStarted.Eagerly, List(8) { 0 })
@@ -266,7 +268,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         "tcp_algo"                     -> c.copy(tcpAlgo              = value)
         "net_rxqueuelen"               -> c.copy(netRxqueuelen        = value.toIntOrNull() ?: c.netRxqueuelen)
         "gpu_idle_timer"               -> c.copy(gpuIdleTimer          = value.toIntOrNull() ?: c.gpuIdleTimer)
-        "thermal_boost"                -> c.copy(thermalBoost          = value == "1")
+        "thermal_boost"                -> c.copy(thermalBoost          = value.toIntOrNull() ?: c.thermalBoost)
         else                           -> c
     }
 }

@@ -86,15 +86,15 @@ class SysfsRepository(private val context: Context) {
     suspend fun readLiveNodes(): dev.garnetforge.app.data.model.LiveNodeValues = withContext(Dispatchers.IO) {
         val raw = Shell.cmd(
             "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' " +
-            ""\$(cat /proc/sys/vm/swappiness 2>/dev/null)" " +
-            ""\$(cat /proc/sys/vm/dirty_ratio 2>/dev/null)" " +
-            ""\$(cat /proc/sys/vm/dirty_background_ratio 2>/dev/null)" " +
-            ""\$(cat /proc/sys/vm/vfs_cache_pressure 2>/dev/null)" " +
-            ""\$(for ra in /sys/block/*/queue/read_ahead_kb; do [ -f \"\$ra\" ] && cat \"\$ra\" && break; done 2>/dev/null)" " +
-            ""\$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null)" " +
-            ""\$(ip link show 2>/dev/null | grep -m1 'qlen' | sed 's/.*qlen //' | cut -d' ' -f1)" " +
-            ""\$(cat $GPU_PWRLEVEL 2>/dev/null)" " +
-            ""\$(cat $GPU_IDLE_TIMER 2>/dev/null)""
+            "\"\$(cat /proc/sys/vm/swappiness 2>/dev/null)\" " +
+            "\"\$(cat /proc/sys/vm/dirty_ratio 2>/dev/null)\" " +
+            "\"\$(cat /proc/sys/vm/dirty_background_ratio 2>/dev/null)\" " +
+            "\"\$(cat /proc/sys/vm/vfs_cache_pressure 2>/dev/null)\" " +
+            "\"\$(for ra in /sys/block/*/queue/read_ahead_kb; do [ -f \"\$ra\" ] && cat \"\$ra\" && break; done 2>/dev/null)\" " +
+            "\"\$(cat /proc/sys/net/ipv4/tcp_congestion_control 2>/dev/null)\" " +
+            "\"\$(ip link show 2>/dev/null | grep -m1 'qlen' | sed 's/.*qlen //' | cut -d' ' -f1)\" " +
+            "\"\$(cat $GPU_PWRLEVEL 2>/dev/null)\" " +
+            "\"\$(cat $GPU_IDLE_TIMER 2>/dev/null)\""
         ).exec().out.firstOrNull() ?: ""
         val p = raw.split("|")
         fun pi(i: Int) = p.getOrNull(i)?.trim()?.toIntOrNull() ?: -1

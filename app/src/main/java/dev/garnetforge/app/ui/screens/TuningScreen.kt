@@ -687,6 +687,7 @@ private fun SectionContent(
             ) { onSet("net_rxqueuelen", rxq.toString()) }
         }
     }
+}
 
 // ── Live per-core frequency bars ─────────────────────────────────────
 @Composable
