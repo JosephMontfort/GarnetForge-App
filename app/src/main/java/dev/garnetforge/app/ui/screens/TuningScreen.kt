@@ -94,10 +94,11 @@ fun TuningScreen(
         animationSpec = tween(400), label = "blur"
     )
 
+    val accent = LocalAccent.current
     val cardBg = if (isLight) {
-        Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFfdeaed)))
+        Brush.verticalGradient(listOf(Color.White, accent.lightCard2))
     } else {
-        Brush.verticalGradient(listOf(Color(0xFF231318), Color(0xFF160c0f)))
+        Brush.verticalGradient(listOf(accent.darkCard, accent.darkBg0))
     }
     val borderColor = if (isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.06f)
     val adaptiveTint = if (isLight) GarnetRed else GarnetLight
@@ -291,10 +292,11 @@ private fun HeroOverlay(
         val left by transition.animateFloat(label = "left", transitionSpec = { if (targetState) spring(0.75f, Spring.StiffnessLow) else spring(0.75f, Spring.StiffnessMediumLow) }) { if (it) targetL else startLeft }
         val top by transition.animateFloat(label = "top", transitionSpec = { if (targetState) spring(0.75f, Spring.StiffnessLow) else spring(0.75f, Spring.StiffnessMediumLow) }) { if (it) targetT else startTop }
 
+        val accent2 = LocalAccent.current
         val cardBg = if (isLight) {
-            Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFfdeaed)))
+            Brush.verticalGradient(listOf(Color.White, accent2.lightCard2))
         } else {
-            Brush.verticalGradient(listOf(Color(0xFF231318), Color(0xFF160c0f)))
+            Brush.verticalGradient(listOf(accent2.darkCard, accent2.darkBg0))
         }
         val borderColor = if (isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.06f)
         val closeIconTint = if (isLight) Color.Black else Color.White
@@ -642,14 +644,14 @@ private fun SectionContent(
             }
             Spacer(Modifier.height(16.dp))
             // Thermal Boost
-            val boostOn = liveNodes.thermalBoost
+            var boostOn by remember(liveNodes.thermalBoost) { mutableStateOf(liveNodes.thermalBoost) }
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Thermal Boost", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                     Text("Writes /sys/class/thermal/thermal_message/boost",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                FancyToggle(boostOn) { onSet("thermal_boost", if (it) "1" else "0") }
+                FancyToggle(boostOn) { v -> boostOn = v; onSet("thermal_boost", if (v) "1" else "0") }
             }
         }
         "io" -> {
@@ -694,7 +696,7 @@ private fun SectionContent(
 private fun CoreFreqGrid(cores: List<Int>, freqs: List<Int>, maxFreq: Int, color: Color) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     val trackBg   = if (isLight) Color.Black.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.08f)
-    val barColor  = if (isLight) color.copy(alpha = 0.7f) else color
+    val barColor  = color
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         cores.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -17,6 +17,7 @@ class SysfsRepository(private val context: Context) {
         const val INSTALL_DIR   = "/data/data/dev.garnetforge.app/files/garnetforge"
         const val THERMAL_APPS  = "$INSTALL_DIR/thermal_apps.prop"
         const val APP_PROFILES  = "$INSTALL_DIR/app_profiles.prop"
+        const val PRESETS      = "$INSTALL_DIR/profile_presets.prop"
         const val SCONFIG       = "/sys/class/thermal/thermal_message/sconfig"
         const val CPU0_MAX      = "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
         const val CPU0_MIN      = "/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq"
@@ -282,6 +283,60 @@ class SysfsRepository(private val context: Context) {
             if (profile.offlinedCores.isNotEmpty()) append(",cores:${profile.offlinedCores.sorted().joinToString("+")}")
         }
         Shell.cmd("printf '${pkg}=${data}\\n' >> $APP_PROFILES").exec()
+    }
+
+    // ── Profile presets ───────────────────────────────────────────────
+    // Format: id=name|cpu0_min:v,cpu0_max:v,...
+    suspend fun getPresets(): List<dev.garnetforge.app.data.model.ProfilePreset> = withContext(Dispatchers.IO) {
+        Shell.cmd("cat $PRESETS 2>/dev/null").exec().out.mapNotNull { line ->
+            val eqIdx = line.indexOf('='); if (eqIdx <= 0) return@mapNotNull null
+            val id = line.substring(0, eqIdx).trim()
+            val rest = line.substring(eqIdx + 1)
+            val pipeIdx = rest.indexOf('|')
+            val name = if (pipeIdx > 0) rest.substring(0, pipeIdx) else rest
+            val dataStr = if (pipeIdx > 0) rest.substring(pipeIdx + 1) else ""
+            val m = dataStr.split(",").mapNotNull { pair ->
+                val ci = pair.indexOf(':'); if (ci <= 0) null else pair.substring(0, ci) to pair.substring(ci + 1)
+            }.toMap()
+            val offlined = m["cores"]?.split("+")?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
+            dev.garnetforge.app.data.model.ProfilePreset(
+                id = id, name = name,
+                cpu0Min = m["cpu0_min"]?.toIntOrNull(), cpu0Max = m["cpu0_max"]?.toIntOrNull(),
+                cpu4Min = m["cpu4_min"]?.toIntOrNull(), cpu4Max = m["cpu4_max"]?.toIntOrNull(),
+                gpuMin  = m["gpu_min"]?.toIntOrNull(),  gpuMax  = m["gpu_max"]?.toIntOrNull(),
+                thermal = m["thermal"], gov0 = m["gov0"], gov4 = m["gov4"],
+                offlinedCores = offlined,
+            )
+        }
+    }
+
+    suspend fun savePreset(preset: dev.garnetforge.app.data.model.ProfilePreset): Unit = withContext(Dispatchers.IO) {
+        val esc = preset.id.replace(".", "\.")
+        Shell.cmd(
+            "grep -v '^${esc}=' $PRESETS > ${PRESETS}.tmp 2>/dev/null || true",
+            "[ -f ${PRESETS}.tmp ] && mv ${PRESETS}.tmp $PRESETS || true"
+        ).exec()
+        val data = buildString {
+            preset.cpu0Min?.let { append("cpu0_min:$it") }
+            preset.cpu0Max?.let { append(",cpu0_max:$it") }
+            preset.cpu4Min?.let { append(",cpu4_min:$it") }
+            preset.cpu4Max?.let { append(",cpu4_max:$it") }
+            preset.gpuMin?.let  { append(",gpu_min:$it")  }
+            preset.gpuMax?.let  { append(",gpu_max:$it")  }
+            preset.thermal?.let { append(",thermal:$it")  }
+            preset.gov0?.let    { append(",gov0:$it")     }
+            preset.gov4?.let    { append(",gov4:$it")     }
+            if (preset.offlinedCores.isNotEmpty()) append(",cores:${preset.offlinedCores.sorted().joinToString("\+")}")
+        }.trimStart(',')
+        Shell.cmd("printf '${preset.id}=${preset.name}|${data}\n' >> $PRESETS").exec()
+    }
+
+    suspend fun deletePreset(id: String): Unit = withContext(Dispatchers.IO) {
+        val esc = id.replace(".", "\.")
+        Shell.cmd(
+            "grep -v '^${esc}=' $PRESETS > ${PRESETS}.tmp 2>/dev/null || true",
+            "[ -f ${PRESETS}.tmp ] && mv ${PRESETS}.tmp $PRESETS || true"
+        ).exec()
     }
 
     // ── Installed app list ────────────────────────────────────────────

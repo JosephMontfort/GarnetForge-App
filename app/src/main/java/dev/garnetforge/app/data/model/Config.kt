@@ -61,6 +61,7 @@ data class AppProfile(
     val gov0: String? = null,
     val gov4: String? = null,
     val offlinedCores: Set<Int> = emptySet(),  // which cores to take offline (1-3, 5-7 only)
+    val presetId: String? = null,   // null = custom; non-null = linked to a ProfilePreset.id
 )
 
 enum class ThermalProfile(val sconfig: String, val label: String) {
@@ -98,4 +99,20 @@ data class NodeDefaults(
     val netRxqueuelen: Int = 1000,
     val gpuIdleTimer: Int = 64,
     val thermalBoostDefault: Boolean = false,
+)
+
+// Preset profile — named template reusable across apps
+data class ProfilePreset(
+    val id: String,           // unique id (timestamp string)
+    val name: String,
+    val cpu0Min: Int? = null,
+    val cpu0Max: Int? = null,
+    val cpu4Min: Int? = null,
+    val cpu4Max: Int? = null,
+    val gpuMin: Int? = null,
+    val gpuMax: Int? = null,
+    val thermal: String? = null,
+    val gov0: String? = null,
+    val gov4: String? = null,
+    val offlinedCores: Set<Int> = emptySet(),
 )

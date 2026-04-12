@@ -3,6 +3,7 @@ package dev.garnetforge.app.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -11,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -22,32 +24,29 @@ import dev.garnetforge.app.ui.theme.*
 fun SettingsScreen(
     deviceInfo: DeviceInfo,
     themeMode: Int,
+    accentTheme: Int,
     blurEnabled: Boolean,
     onTheme: (Int) -> Unit,
+    onAccent: (Int) -> Unit,
     onBlurToggle: (Boolean) -> Unit,
     onTelegram: () -> Unit,
 ) {
     var aboutExpanded by remember { mutableStateOf(false) }
 
     Column(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Spacer(Modifier.height(8.dp))
-
         SectionHeader("APPEARANCE")
         GarnetCard {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column {
                         Text("Theme", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                         Text(when(themeMode) { 1 -> "Dark"; 2 -> "Light"; else -> "System Default" },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ProfileChip("Auto", themeMode == 0) { onTheme(0) }
@@ -55,43 +54,42 @@ fun SettingsScreen(
                         ProfileChip("Light", themeMode == 2) { onTheme(2) }
                     }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 2.dp), 0.5.dp, MaterialTheme.colorScheme.outlineVariant)
-                LabeledSwitch(
-                    label = "Background Blur",
-                    subtitle = "Glass effect behind expanded tuning cards",
-                    checked = blurEnabled,
-                    onCheckedChange = onBlurToggle
-                )
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Column {
+                            Text("Accent Colour", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text(ACCENT_THEMES.getOrElse(accentTheme) { ACCENT_THEMES[0] }.name,
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ACCENT_THEMES.forEachIndexed { idx, palette ->
+                            AccentSwatch(palette = palette, selected = accentTheme == idx) { onAccent(idx) }
+                        }
+                    }
+                }
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                LabeledSwitch("Background Blur", "Glass effect behind expanded tuning cards", blurEnabled, onBlurToggle)
             }
         }
 
         SectionHeader("ABOUT")
         GarnetCard {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { aboutExpanded = !aboutExpanded }
-                    .padding(vertical = 4.dp),
-                Arrangement.SpaceBetween, Alignment.CenterVertically,
-            ) {
+            Row(Modifier.fillMaxWidth().clickable { aboutExpanded = !aboutExpanded }.padding(vertical = 4.dp),
+                Arrangement.SpaceBetween, Alignment.CenterVertically) {
                 Column {
                     Text("GarnetForge", style = MaterialTheme.typography.titleMedium,
-                        color = GarnetLight, fontWeight = FontWeight.Bold)
+                        color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Text("Kernel Manager · v1.0.0", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(
-                    if (aboutExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Icon(if (aboutExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
-            AnimatedVisibility(aboutExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit  = shrinkVertically() + fadeOut()) {
+            AnimatedVisibility(aboutExpanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                     HorizontalDivider(Modifier.padding(vertical = 10.dp), 0.5.dp, BorderCol)
-
                     SubHeader("DEVICE")
                     InfoRow("Device",   deviceInfo.deviceName.ifEmpty { "—" })
                     InfoRow("Codename", deviceInfo.codename.ifEmpty { "—" })
@@ -99,47 +97,50 @@ fun SettingsScreen(
                     InfoRow("Android",  deviceInfo.androidVersion.ifEmpty { "—" })
                     InfoRow("Kernel",   deviceInfo.kernelVersion.ifEmpty { "—" })
                     Spacer(Modifier.height(8.dp))
-
                     HorizontalDivider(Modifier.padding(vertical = 4.dp), 0.5.dp, BorderCol)
                     SubHeader("DEVELOPER")
                     Text("montfort_1607", style = MaterialTheme.typography.bodyLarge,
-                        color = GarnetLight, fontWeight = FontWeight.SemiBold)
+                        color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
-                    Row(
-                        Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable(onClick = onTelegram)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    Row(Modifier.clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable(onClick = onTelegram).padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Send, null, tint = GarnetLight, modifier = Modifier.size(16.dp))
-                        Text("@montfort_1607 on Telegram",
-                            style = MaterialTheme.typography.bodyMedium, color = GarnetLight)
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Send, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        Text("@montfort_1607 on Telegram", style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
         }
-
         Spacer(Modifier.height(80.dp))
     }
 }
 
 @Composable
-private fun SubHeader(text: String) {
-    Text(text, style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(bottom = 6.dp, top = 4.dp))
+private fun AccentSwatch(palette: AccentPalette, selected: Boolean, onClick: () -> Unit) {
+    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+    val swatch  = if (isLight) palette.lightPrimary else palette.primary
+    Box(contentAlignment = Alignment.Center,
+        modifier = Modifier.size(44.dp).clip(CircleShape)
+            .background(Brush.radialGradient(listOf(palette.primaryLight, swatch)))
+            .border(if (selected) 3.dp else 1.5.dp,
+                    if (selected) Color.White else Color.White.copy(0.3f), CircleShape)
+            .clickable { onClick() }) {
+        if (selected) Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(18.dp))
+    }
 }
 
-@Composable
-private fun InfoRow(label: String, value: String) {
+@Composable private fun SubHeader(text: String) {
+    Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        letterSpacing = 1.2.sp, modifier = Modifier.padding(bottom = 6.dp, top = 4.dp))
+}
+
+@Composable private fun InfoRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = GarnetLight,
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.widthIn(max = 200.dp))
     }
 }

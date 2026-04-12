@@ -187,7 +187,28 @@ class GarnetService : Service() {
         )
     }
 
-    private suspend fun applyProfile(p: AppProfile) {
+    @Volatile private var presetCache: Map<String, ProfilePreset> = emptyMap()
+    @Volatile private var presetCacheAge = 0L
+
+    private suspend fun resolveProfile(p: AppProfile): AppProfile {
+        if (p.presetId == null) return p
+        val now = System.currentTimeMillis()
+        if (now - presetCacheAge > 15_000) {
+            presetCache = runCatching { sysfsRepo.getPresets().associateBy { it.id } }.getOrDefault(presetCache)
+            presetCacheAge = now
+        }
+        val preset = presetCache[p.presetId] ?: return p
+        return p.copy(
+            thermal = preset.thermal, gov0 = preset.gov0, gov4 = preset.gov4,
+            cpu0Min = preset.cpu0Min, cpu0Max = preset.cpu0Max,
+            cpu4Min = preset.cpu4Min, cpu4Max = preset.cpu4Max,
+            gpuMin  = preset.gpuMin,  gpuMax  = preset.gpuMax,
+            offlinedCores = preset.offlinedCores,
+        )
+    }
+
+    private suspend fun applyProfile(raw: AppProfile) {
+        val p = resolveProfile(raw)
         val cmds = mutableListOf<String>()
         p.thermal?.let  { cmds.add("printf '$it' > $SCONFIG 2>/dev/null") }
         p.gov0?.let     { cmds.add("echo $it > ${SysfsRepository.CPU0_GOV} 2>/dev/null") }
@@ -198,7 +219,6 @@ class GarnetService : Service() {
         p.cpu4Min?.let  { cmds.add("echo $it > ${SysfsRepository.CPU4_MIN} 2>/dev/null") }
         p.gpuMax?.let   { cmds.add("echo ${it * 1_000_000L} > ${SysfsRepository.GPU_MAX} 2>/dev/null") }
         p.gpuMin?.let   { cmds.add("echo ${it * 1_000_000L} > ${SysfsRepository.GPU_MIN} 2>/dev/null") }
-        // Core control — only offline allowed cores (1-3 little, 5-7 big; never 0 or 4)
         val allowed = (1..3).toSet() + (5..7).toSet()
         val toOffline = p.offlinedCores.intersect(allowed)
         val toOnline  = allowed - toOffline

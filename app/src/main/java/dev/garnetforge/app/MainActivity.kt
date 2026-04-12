@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val themeMode by vm.themeMode.collectAsState()
+            val accentTheme by vm.accentTheme.collectAsState()
             val blurEnabled by vm.blurEnabled.collectAsState()
             
             val systemDark = isSystemInDarkTheme()
@@ -51,13 +52,14 @@ class MainActivity : ComponentActivity() {
                 else -> systemDark
             }
             
-            GarnetForgeTheme(darkTheme = isDark) {
+            GarnetForgeTheme(darkTheme = isDark, accentIndex = accentTheme) {
                 val rootOk      by vm.rootOk.collectAsState()
                 val checking    by vm.rootChecking.collectAsState()
                 val config      by vm.config.collectAsState()
                 val stats       by vm.stats.collectAsState()
                 val sconfig     by vm.sconfig.collectAsState()
                 val apps        by vm.apps.collectAsState()
+                val presets     by vm.presets.collectAsState()
                 val toast       by vm.toast.collectAsState()
                 val appsLoading by vm.appsLoading.collectAsState()
                 val deviceInfo  by vm.deviceInfo.collectAsState()
@@ -149,6 +151,9 @@ class MainActivity : ComponentActivity() {
                                 composable(Screen.Intelligence.route) {
                                     IntelligenceScreen(
                                         config        = config,
+                                        presets       = presets,
+                                        onSavePreset  = { vm.savePreset(it) },
+                                        onDeletePreset= { vm.deletePreset(it) },
                                         apps          = apps,
                                         appsLoading   = appsLoading,
                                         availFreqsL   = availFreqsL,
@@ -163,6 +168,8 @@ class MainActivity : ComponentActivity() {
                                     SettingsScreen(
                                         deviceInfo  = deviceInfo,
                                         themeMode   = themeMode,
+                                        accentTheme = accentTheme,
+                                        onAccent    = { vm.setAccentTheme(it) },
                                         blurEnabled = blurEnabled,
                                         onTheme     = { vm.setThemeMode(it) },
                                         onBlurToggle= { vm.setBlurEnabled(it) },

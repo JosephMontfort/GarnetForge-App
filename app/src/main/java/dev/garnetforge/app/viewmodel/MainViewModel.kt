@@ -25,10 +25,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val themeMode: StateFlow<Int> = dataStore.data.map { it[intPreferencesKey("theme_mode")] ?: 0 }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
     val blurEnabled: StateFlow<Boolean> = dataStore.data.map { it[booleanPreferencesKey("blur_enabled")] ?: true }
+    val accentTheme: StateFlow<Int> = dataStore.data.map { it[intPreferencesKey("accent_theme")] ?: 0 }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     fun setThemeMode(m: Int) = viewModelScope.launch { dataStore.edit { it[intPreferencesKey("theme_mode")] = m } }
     fun setBlurEnabled(e: Boolean) = viewModelScope.launch { dataStore.edit { it[booleanPreferencesKey("blur_enabled")] = e } }
+    fun setAccentTheme(i: Int) = viewModelScope.launch { dataStore.edit { it[intPreferencesKey("accent_theme")] = i } }
 
     private val _config       = MutableStateFlow(GarnetConfig())
     private val _stats        = MutableStateFlow(LiveStats())
@@ -220,6 +223,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_appsLoading.value) return@launch
         _appsLoading.value = true
         runCatching {
+            _presets.value = sysfsRepo.getPresets()
             val profileMap = sysfsRepo.getAppProfiles()
             _appProfileMap.value = profileMap
             val installed = sysfsRepo.getInstalledApps()
@@ -228,6 +232,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }.onFailure { toast("App list error: ${it.message}") }
         _appsLoading.value = false
+    }
+
+    fun savePreset(preset: ProfilePreset) = viewModelScope.launch {
+        val list = _presets.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == preset.id }
+        if (idx >= 0) list[idx] = preset else list.add(preset)
+        _presets.value = list
+        runCatching { sysfsRepo.savePreset(preset) }
+    }
+
+    fun deletePreset(id: String) = viewModelScope.launch {
+        _presets.value = _presets.value.filter { it.id != id }
+        runCatching { sysfsRepo.deletePreset(id) }
     }
 
     fun saveAppProfile(pkg: String, profile: AppProfile?) = viewModelScope.launch {
