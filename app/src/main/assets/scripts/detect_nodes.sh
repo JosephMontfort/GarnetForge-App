@@ -36,18 +36,33 @@ for c in 0 1 2 3 4 5 6 7; do
 done
 
 # GPU
-for d in /sys/class/devfreq/*/; do
-    [ -f "$d/cur_freq" ] || continue
-    record "gpu_cur_freq"  "$d/cur_freq"
-    record "gpu_max_mhz"   "$d/max_freq"
-    record "gpu_min_mhz"   "$d/min_freq"
-    # Available GPU frequencies (Hz)
-    if [ -f "$d/available_frequencies" ]; then
-        AVAIL_GPU=$(cat "$d/available_frequencies" 2>/dev/null | tr ' ' ',' | sed 's/^,//;s/,$//')
-        [ -n "$AVAIL_GPU" ] && record "gpu_avail_freqs" "$AVAIL_GPU"
-    fi
-    break
+GPU_DIR=""
+for d in /sys/class/devfreq/*kgsl*/ /sys/class/devfreq/*gpu*/ /sys/class/devfreq/*3d*/ /sys/class/devfreq/*mali*/; do
+    if [ -f "$d/cur_freq" ]; then GPU_DIR="$d"; break; fi
 done
+if [ -n "$GPU_DIR" ]; then
+    record "gpu_cur_freq"  "$GPU_DIR/cur_freq"
+    record "gpu_max_mhz"   "$GPU_DIR/max_freq"
+    record "gpu_min_mhz"   "$GPU_DIR/min_freq"
+    
+    AVAIL_GPU=""
+    if [ -f "$GPU_DIR/available_frequencies" ]; then
+        AVAIL_GPU=$(cat "$GPU_DIR/available_frequencies" 2>/dev/null)
+    fi
+    
+    # Fallback to direct KGSL node if empty or only 1 frequency
+    if [ -z "$AVAIL_GPU" ] || [ $(echo "$AVAIL_GPU" | wc -w) -lt 2 ]; then
+        if [ -f "/sys/class/kgsl/kgsl-3d0/gpu_available_frequencies" ]; then
+            AVAIL_GPU=$(cat /sys/class/kgsl/kgsl-3d0/gpu_available_frequencies 2>/dev/null)
+        fi
+    fi
+
+    if [ -n "$AVAIL_GPU" ]; then
+        AVAIL_GPU_FMT=$(echo "$AVAIL_GPU" | tr '
+' ' ' | tr -s ' ' | sed 's/ $//' | tr ' ' ',')
+        [ -n "$AVAIL_GPU_FMT" ] && record "gpu_avail_freqs" "$AVAIL_GPU_FMT"
+    fi
+fi
 
 # Thermal
 [ -e /sys/class/thermal/thermal_message/sconfig ] && record "thermal_sconfig" "/sys/class/thermal/thermal_message/sconfig"

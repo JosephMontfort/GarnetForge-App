@@ -24,16 +24,18 @@ for d in /sys/devices/system/cpu/cpufreq/policy*/; do
 done
 
 # GPU
-for d in /sys/class/devfreq/*/; do
-    [ -f "$d/cur_freq" ] || continue
-    rec "default_gpu_max" "$(cat "${d}max_freq" 2>/dev/null)"
-    rec "default_gpu_min" "$(cat "${d}min_freq" 2>/dev/null)"
-    PWRLEVEL_DIR="${d}device/kgsl/kgsl-3d0"
+GPU_DIR=""
+for d in /sys/class/devfreq/*kgsl*/ /sys/class/devfreq/*gpu*/ /sys/class/devfreq/*3d*/ /sys/class/devfreq/*mali*/; do
+    if [ -f "$d/cur_freq" ]; then GPU_DIR="$d"; break; fi
+done
+if [ -n "$GPU_DIR" ]; then
+    rec "default_gpu_max" "$(cat "${GPU_DIR}/max_freq" 2>/dev/null)"
+    rec "default_gpu_min" "$(cat "${GPU_DIR}/min_freq" 2>/dev/null)"
+    PWRLEVEL_DIR="${GPU_DIR}/device/kgsl/kgsl-3d0"
     [ -f "$PWRLEVEL_DIR/max_pwrlevel" ] && rec "default_gpu_max_pwrlevel" "$(cat "$PWRLEVEL_DIR/max_pwrlevel" 2>/dev/null)"
     [ -f "$PWRLEVEL_DIR/min_pwrlevel" ] && rec "default_gpu_min_pwrlevel" "$(cat "$PWRLEVEL_DIR/min_pwrlevel" 2>/dev/null)"
     [ -f "$PWRLEVEL_DIR/idle_timer" ]   && rec "default_gpu_idle_timer"   "$(cat "$PWRLEVEL_DIR/idle_timer"   2>/dev/null)"
-    break
-done
+fi
 
 # VM
 rec "default_vm_swappiness"              "$(cat /proc/sys/vm/swappiness 2>/dev/null)"
