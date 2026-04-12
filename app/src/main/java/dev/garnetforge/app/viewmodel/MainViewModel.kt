@@ -25,9 +25,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val themeMode: StateFlow<Int> = dataStore.data.map { it[intPreferencesKey("theme_mode")] ?: 0 }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
     val blurEnabled: StateFlow<Boolean> = dataStore.data.map { it[booleanPreferencesKey("blur_enabled")] ?: true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val accentTheme: StateFlow<Int> = dataStore.data.map { it[intPreferencesKey("accent_theme")] ?: 0 }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     fun setThemeMode(m: Int) = viewModelScope.launch { dataStore.edit { it[intPreferencesKey("theme_mode")] = m } }
     fun setBlurEnabled(e: Boolean) = viewModelScope.launch { dataStore.edit { it[booleanPreferencesKey("blur_enabled")] = e } }

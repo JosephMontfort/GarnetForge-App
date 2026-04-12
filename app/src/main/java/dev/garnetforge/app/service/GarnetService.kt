@@ -8,8 +8,7 @@ import android.os.*
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.garnetforge.app.R
-import dev.garnetforge.app.data.model.AppProfile
-import dev.garnetforge.app.data.model.GarnetConfig
+import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.data.repository.ConfigRepository
 import dev.garnetforge.app.data.repository.SysfsRepository
 import com.topjohnwu.superuser.Shell

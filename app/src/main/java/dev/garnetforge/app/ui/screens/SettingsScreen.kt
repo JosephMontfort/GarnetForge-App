@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package dev.garnetforge.app.ui.screens
 
 import androidx.compose.animation.*

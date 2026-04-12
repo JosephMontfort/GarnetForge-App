@@ -311,7 +311,7 @@ class SysfsRepository(private val context: Context) {
     }
 
     suspend fun savePreset(preset: dev.garnetforge.app.data.model.ProfilePreset): Unit = withContext(Dispatchers.IO) {
-        val esc = preset.id.replace(".", "\.")
+        val esc = preset.id.replace(".", "\\.")
         Shell.cmd(
             "grep -v '^${esc}=' $PRESETS > ${PRESETS}.tmp 2>/dev/null || true",
             "[ -f ${PRESETS}.tmp ] && mv ${PRESETS}.tmp $PRESETS || true"
@@ -326,13 +326,13 @@ class SysfsRepository(private val context: Context) {
             preset.thermal?.let { append(",thermal:$it")  }
             preset.gov0?.let    { append(",gov0:$it")     }
             preset.gov4?.let    { append(",gov4:$it")     }
-            if (preset.offlinedCores.isNotEmpty()) append(",cores:${preset.offlinedCores.sorted().joinToString("\+")}")
+            if (preset.offlinedCores.isNotEmpty()) append(",cores:${preset.offlinedCores.sorted().joinToString("\\+")}")
         }.trimStart(',')
         Shell.cmd("printf '${preset.id}=${preset.name}|${data}\n' >> $PRESETS").exec()
     }
 
     suspend fun deletePreset(id: String): Unit = withContext(Dispatchers.IO) {
-        val esc = id.replace(".", "\.")
+        val esc = id.replace(".", "\\.")
         Shell.cmd(
             "grep -v '^${esc}=' $PRESETS > ${PRESETS}.tmp 2>/dev/null || true",
             "[ -f ${PRESETS}.tmp ] && mv ${PRESETS}.tmp $PRESETS || true"
