@@ -17,6 +17,9 @@ import androidx.datastore.preferences.preferencesDataStore
 val Context.dataStore by preferencesDataStore(name = "ui_prefs")
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+    private val _presets = MutableStateFlow<List<ProfilePreset>>(emptyList())
+    val presets: StateFlow<List<ProfilePreset>> = _presets.asStateFlow()
+
 
     private val configRepo = ConfigRepository()
     val sysfsRepo = SysfsRepository(app)
