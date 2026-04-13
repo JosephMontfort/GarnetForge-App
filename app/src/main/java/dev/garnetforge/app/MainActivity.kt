@@ -20,6 +20,11 @@ import androidx.compose.ui.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Image
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
 import dev.garnetforge.app.service.GarnetService
@@ -64,6 +69,7 @@ class MainActivity : ComponentActivity() {
                 val appsLoading by vm.appsLoading.collectAsState()
                 val deviceInfo  by vm.deviceInfo.collectAsState()
                 val coreStates      by vm.coreStates.collectAsState()
+                val dashboardReady  by vm.dashboardReady.collectAsState()
                 val perCoreFreqMhz  by vm.perCoreFreqMhz.collectAsState()
                 val availFreqsL     by vm.availFreqsL.collectAsState()
                 val liveNodes       by vm.liveNodes.collectAsState()
@@ -72,7 +78,7 @@ class MainActivity : ComponentActivity() {
                 val availFreqsGpu   by vm.availFreqsGpu.collectAsState()
 
                 when {
-                    checking -> SplashScreen()
+                    checking || (rootOk && !dashboardReady) -> AppIconSplash()
                     !rootOk  -> NoRootScreen(
                         onRetry = {
                             // Force kill and restart
@@ -140,7 +146,7 @@ class MainActivity : ComponentActivity() {
                                 popExitTransition    = { slideOutHorizontally(tween(250)) { it/4 } + fadeOut(tween(180)) },
                             ) {
                                 composable(Screen.Dashboard.route) {
-                                    DashboardScreen(stats, config, sconfig, onClearRam = { vm.clearRam() })
+                                    DashboardScreen(stats, config, sconfig, coreStates, onClearRam = { vm.clearRam() })
                                 }
                                 composable(Screen.Tuning.route) {
                                     TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, blurEnabled = blurEnabled,
@@ -201,13 +207,32 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SplashScreen() {
-    Box(Modifier.fillMaxSize(), Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            CircularProgressIndicator(color = GarnetLight, strokeWidth = 3.dp)
-            Text("Verifying root access…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+@Composable
+private fun AppIconSplash() {
+    Box(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally,
+               verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(R.mipmap.ic_launcher),
+                contentDescription = "GarnetForge",
+                modifier = Modifier.size(96.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+            )
+            CircularProgressIndicator(
+                color = GarnetLight,
+                strokeWidth = 2.5.dp,
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
+}
+
+@Composable
+private fun SplashScreen() {
+    AppIconSplash()
 }
 
 @Composable

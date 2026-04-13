@@ -47,6 +47,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _appsLoading  = MutableStateFlow(false)
     private val _deviceInfo   = MutableStateFlow(DeviceInfo())
     private val _coreStates   = MutableStateFlow(List(8) { true })
+    private val _dashboardReady= MutableStateFlow(false)
     private val _liveNodes    = MutableStateFlow(dev.garnetforge.app.data.model.LiveNodeValues())
     private val _nodeDefaults = MutableStateFlow(dev.garnetforge.app.data.model.NodeDefaults())
     private val _availFreqsL  = MutableStateFlow<List<Int>>(emptyList())
@@ -172,7 +173,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             var tick = 0
             while (isActive) {
                 runCatching {
-                    _stats.value   = sysfsRepo.getLiveStats()
+                    val s = sysfsRepo.getLiveStats()
+                    _stats.value = s
+                    if (!_dashboardReady.value && s.timeStr.isNotEmpty() && s.freeRamMb > 0) _dashboardReady.value = true
                     _sconfig.value = sysfsRepo.getCurrentSconfig()
                     if (++tick >= 15) { tick = 0; _config.value = configRepo.load() }
                 }

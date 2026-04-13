@@ -96,6 +96,7 @@ fun DashboardScreen(
     stats: LiveStats,
     config: GarnetConfig,
     sconfig: String,
+    coreStates: List<Boolean>,
     onClearRam: () -> Unit,
 ) {
     // Rotate message every 60 seconds
@@ -136,9 +137,14 @@ fun DashboardScreen(
 
         SectionHeader("LIVE CLOCK")
         GarnetCard(glowColor = GarnetGlow) {
+            val bigCoresAllOff = (4..7).all { !coreStates.getOrElse(it) { true } }
             FreqBar("Little Cluster (0–3)", stats.cpu0FreqMhz, 691, 1958, ColorGreen)
             Spacer(Modifier.height(14.dp))
-            FreqBar("Big Cluster (4–7)", stats.cpu4FreqMhz, 691, 2400, MaterialTheme.colorScheme.primary)
+            if (bigCoresAllOff) {
+                FreqBar("Big Cluster (4–7) · offline", 0, 0, 1, MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                FreqBar("Big Cluster (4–7)", stats.cpu4FreqMhz, 691, 2400, MaterialTheme.colorScheme.primary)
+            }
             Spacer(Modifier.height(14.dp))
             FreqBar("GPU · Adreno", stats.gpuFreqMhz, 295, 940, PurpleLight)
         }
