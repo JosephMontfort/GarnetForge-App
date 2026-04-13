@@ -279,8 +279,10 @@ private fun AppProfileSheet(
     val context = LocalContext.current
     var enabled    by remember { mutableStateOf(app.enabled) }
     var presetSel  by remember { mutableStateOf(app.presetId) }
-    // showCustom: only expand when Custom explicitly selected
-    var showCustom by remember { mutableStateOf(false) }
+    // showCustom: true if no preset linked AND the app has custom settings saved
+    val hasCustomSaved = app.presetId == null && (app.cpu0Max != null || app.cpu4Max != null ||
+        app.gpuMax != null || app.thermal != null || app.gov0 != null || app.offlinedCores.isNotEmpty())
+    var showCustom by remember { mutableStateOf(hasCustomSaved) }
     // Track if Save was explicitly clicked
     var savedOnce  by remember { mutableStateOf(false) }
 

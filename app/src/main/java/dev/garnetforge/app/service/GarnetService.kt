@@ -144,29 +144,28 @@ class GarnetService : Service() {
             profileMapAge = now
         }
 
-        val rawPkg     = getForegroundPackage()
+        val rawPkg = getForegroundPackage()
+
+        // System UI overlays (Quick Settings, notification shade, volume panel, etc.)
+        // sit on top of the real app without replacing it. Ignore them entirely —
+        // do NOT restore, do NOT update lastPkg.
+        if (rawPkg != null && isSystemService(rawPkg)) return
+
         val isLauncher = rawPkg != null && isLauncherPkg(rawPkg)
-        val isSysUI    = rawPkg != null && isSystemService(rawPkg)
-
-        // System UI (Quick Settings, notifications, etc.) is transparent to per-app logic.
-        // When sysUI is in the foreground, we don't restore — the real app is still "running".
-        if (isSysUI) return
-
         val pkg = if (rawPkg == null || isLauncher) null else rawPkg
 
-        // No change — nothing to do
+        // No change in real foreground — nothing to do
         if (pkg == lastPkg) return
 
-        // New package appeared — apply short dwell to avoid flicker on fast transitions
+        // Brief dwell before acting on a new app coming to foreground
         if (pkg != null) {
             delay(400)
-            // Re-read after dwell; if it changed again, skip this transition
             val recheck = getForegroundPackage()
-            val recheckSysUI = recheck != null && isSystemService(recheck)
-            if (recheckSysUI) return   // sysUI appeared during dwell — ignore
+            // sysUI appeared during dwell → ignore transition
+            if (recheck != null && isSystemService(recheck)) return
             val recheckIsLauncher = recheck != null && isLauncherPkg(recheck)
             val stable = if (recheck == null || recheckIsLauncher) null else recheck
-            if (stable != pkg) return   // pkg already changed, skip
+            if (stable != pkg) return
         }
 
         lastPkg = pkg ?: ""
@@ -257,12 +256,14 @@ class GarnetService : Service() {
         prevSaved = false; prevSnapshot = null
     }
 
+    /**
+     * Returns the most recent foreground package, INCLUDING system UI packages.
+     * Callers must decide how to handle sysUI vs real apps.
+     */
     private fun getForegroundPackage(): String? = try {
         val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
-        // Use a 2s window. Prefer ACTIVITY_RESUMED (type 7) which only fires for the
-        // true top activity — not freeform floating windows. Fall back to MOVE_TO_FOREGROUND.
-        val events = usm.queryEvents(now - 2000, now) ?: return null
+        val events = usm.queryEvents(now - 3000, now) ?: return null
         val ev = UsageEvents.Event()
         var lastFg: String? = null
         var lastFgTime = 0L
@@ -271,13 +272,13 @@ class GarnetService : Service() {
         while (events.hasNextEvent()) {
             events.getNextEvent(ev)
             when (ev.eventType) {
-                UsageEvents.Event.MOVE_TO_FOREGROUND -> if (ev.timeStamp > lastFgTime) { lastFg = ev.packageName; lastFgTime = ev.timeStamp }
-                7 /* ACTIVITY_RESUMED */ -> if (ev.timeStamp > lastResumedTime) { lastResumed = ev.packageName; lastResumedTime = ev.timeStamp }
+                UsageEvents.Event.MOVE_TO_FOREGROUND ->
+                    if (ev.timeStamp > lastFgTime) { lastFg = ev.packageName; lastFgTime = ev.timeStamp }
+                7 /* ACTIVITY_RESUMED */ ->
+                    if (ev.timeStamp > lastResumedTime) { lastResumed = ev.packageName; lastResumedTime = ev.timeStamp }
             }
         }
-        // Prefer ACTIVITY_RESUMED; it doesn't fire for freeform overlays
-        val pkg = (lastResumed ?: lastFg)?.takeIf { !isSystemService(it) }
-        pkg
+        lastResumed ?: lastFg
     } catch (e: Exception) { null }
 
     private fun isLauncherPkg(p: String) =
