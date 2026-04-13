@@ -331,14 +331,14 @@ private fun HeroOverlay(
                     width  = with(density) { animWidth.toDp() },
                     height = with(density) { animHeight.toDp() },
                 )
-                .graphicsLayer(
-                    rotationY              = rotationY,
-                    cameraDistance         = 12f * density.density,
-                    scaleX                 = snapScale,
-                    scaleY                 = snapScale,
-                    translationX           = left,
-                    translationY           = top + snapTranslateY,
-                )
+                .graphicsLayer {
+                    this.rotationY       = rotationY
+                    this.cameraDistance  = 12f * density.density
+                    this.scaleX          = snapScale
+                    this.scaleY          = snapScale
+                    this.translationX    = left
+                    this.translationY    = top + snapTranslateY
+                }
                 .shadow(if (isLight) { if (internalExpanded) 16.dp else 2.dp } else 0.dp, RoundedCornerShape(if (internalExpanded) 32.dp else 20.dp))
                 .clip(RoundedCornerShape(if (internalExpanded) 32.dp else 20.dp))
                 .background(cardBg)
