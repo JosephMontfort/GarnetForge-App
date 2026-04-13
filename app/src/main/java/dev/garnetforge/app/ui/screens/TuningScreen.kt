@@ -90,17 +90,19 @@ fun TuningScreen(
 
     val anyExpanded = targetExpandedId != null
     val backgroundBlur by animateDpAsState(
-        targetValue = if (anyExpanded && blurEnabled) 12.dp else 0.dp,
-        animationSpec = tween(400), label = "blur"
+        targetValue = if (anyExpanded && blurEnabled) 10.dp else 0.dp,
+        animationSpec = tween(350), label = "blur"
     )
 
     val accent = LocalAccent.current
-    val cardBg = if (isLight) {
-        Brush.verticalGradient(listOf(Color.White, accent.lightCard2))
-    } else {
-        Brush.verticalGradient(listOf(accent.darkCard, accent.darkBg0))
+    // Memoize Brush objects — prevents new object allocation every recomposition frame
+    val cardBg = remember(isLight, accent) {
+        if (isLight) Brush.verticalGradient(listOf(Color.White, accent.lightCard2))
+        else Brush.verticalGradient(listOf(accent.darkCard, accent.darkBg0))
     }
-    val borderColor = if (isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.06f)
+    val borderColor = remember(isLight) {
+        if (isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.06f)
+    }
     val adaptiveTint = if (isLight) GarnetRed else GarnetLight
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).onGloballyPositioned { parentOffset = it.positionInRoot() }) {
@@ -112,7 +114,7 @@ fun TuningScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .blur(backgroundBlur)
+                .then(if (backgroundBlur > 0.dp) Modifier.blur(backgroundBlur) else Modifier)
         ) {
             items(SECTIONS, key = { it.id }) { section ->
                 val isExpanded = activeOverlayIds.contains(section.id)
@@ -293,12 +295,14 @@ private fun HeroOverlay(
         val top by transition.animateFloat(label = "top", transitionSpec = { if (targetState) spring(0.75f, Spring.StiffnessLow) else spring(0.75f, Spring.StiffnessMediumLow) }) { if (it) targetT else startTop }
 
         val accent2 = LocalAccent.current
-        val cardBg = if (isLight) {
-            Brush.verticalGradient(listOf(Color.White, accent2.lightCard2))
-        } else {
-            Brush.verticalGradient(listOf(accent2.darkCard, accent2.darkBg0))
+        // Memoized — no new Brush allocations during animation frames
+        val cardBg = remember(isLight, accent2) {
+            if (isLight) Brush.verticalGradient(listOf(Color.White, accent2.lightCard2))
+            else Brush.verticalGradient(listOf(accent2.darkCard, accent2.darkBg0))
         }
-        val borderColor = if (isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.06f)
+        val borderColor = remember(isLight) {
+            if (isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.06f)
+        }
         val closeIconTint = if (isLight) Color.Black else Color.White
         val closeIconBg = if (isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.08f)
         val adaptiveTint = if (isLight) GarnetRed else GarnetLight
@@ -332,12 +336,13 @@ private fun HeroOverlay(
                     height = with(density) { animHeight.toDp() },
                 )
                 .graphicsLayer(
-                    rotationY       = rotationY,
-                    cameraDistance  = 12f * density.density,
-                    scaleX          = snapScale,
-                    scaleY          = snapScale,
-                    translationX    = left,
-                    translationY    = top + snapTranslateY,
+                    rotationY              = rotationY,
+                    cameraDistance         = 12f * density.density,
+                    scaleX                 = snapScale,
+                    scaleY                 = snapScale,
+                    translationX           = left,
+                    translationY           = top + snapTranslateY,
+                    compositingStrategy    = androidx.compose.ui.graphics.CompositingStrategy.Offscreen,
                 )
                 .shadow(if (isLight) { if (internalExpanded) 16.dp else 2.dp } else 0.dp, RoundedCornerShape(if (internalExpanded) 32.dp else 20.dp))
                 .clip(RoundedCornerShape(if (internalExpanded) 32.dp else 20.dp))

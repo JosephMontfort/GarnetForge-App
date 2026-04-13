@@ -22,8 +22,7 @@ import dev.garnetforge.app.ui.theme.*
 import java.time.LocalTime
 import kotlinx.coroutines.delay
 
-private val ALL_MSGS = listOf(
-    // Morning
+private val MORNING_MSGS = listOf(
     "Rise and grind. Your kernel won't tune itself.",
     "Good morning. Coffee first, overclocking second.",
     "Early bird optimises the clock.",
@@ -34,7 +33,10 @@ private val ALL_MSGS = listOf(
     "Fresh boot energy. Let's not waste it.",
     "Morning. Temperatures look stable. Unlike your sleep schedule.",
     "Rise, shine, and check those clock speeds.",
-    // Afternoon
+    "Good morning. The walt governor slept well. Did you?",
+    "Morning check-in. Everything looks stable. Mostly.",
+)
+private val AFTERNOON_MSGS = listOf(
     "Peak hours, peak clocks. You know the drill.",
     "Afternoon check-in — is the governor behaving?",
     "Good afternoon. The big cores say hi.",
@@ -45,7 +47,10 @@ private val ALL_MSGS = listOf(
     "The SoC is running. You are running. Parallel processing.",
     "Good afternoon. Power levels nominal. Ambitions: excessive.",
     "Half the day gone. Core 4 hasn't even broken a sweat.",
-    // Evening
+    "Good afternoon. Your thermal profile is judging your choices.",
+    "Post-lunch performance window. Make it count.",
+)
+private val EVENING_MSGS = listOf(
     "Evening. Time to dial it back — or don't.",
     "Good evening. The phone deserves a break. Maybe.",
     "Winding down? Your CPU disagrees.",
@@ -56,7 +61,10 @@ private val ALL_MSGS = listOf(
     "Good evening. ZRAM is still doing its thing silently.",
     "Dusk performance report: surprisingly decent.",
     "Evening. The walt governor has had a long day.",
-    // Night
+    "Good evening. Time to audit those frequency caps.",
+    "Evening mode. Lower the clocks. Raise the dignity.",
+)
+private val NIGHT_MSGS = listOf(
     "Burning midnight oil? So is core 4.",
     "It's late. The scheduler is judging you.",
     "Night mode: you're using it. The CPU isn't.",
@@ -67,11 +75,20 @@ private val ALL_MSGS = listOf(
     "Night owl mode activated. Thermal profile: spicy.",
     "You and the CPU, both refusing to sleep.",
     "The only light in the room is your phone. And your ambitions.",
+    "Deep night. Minimal load. Maximum potential.",
+    "3 AM tuning session. No judgement. Only respect.",
 )
 
 private fun msgForNow(): String {
-    val seed = System.currentTimeMillis() / 60_000   // changes every minute
-    return ALL_MSGS[(seed % ALL_MSGS.size).toInt()]
+    val h = java.time.LocalTime.now().hour
+    val pool = when {
+        h in 5..11  -> MORNING_MSGS
+        h in 12..16 -> AFTERNOON_MSGS
+        h in 17..21 -> EVENING_MSGS
+        else         -> NIGHT_MSGS
+    }
+    val min = java.time.LocalTime.now().minute
+    return pool[min % pool.size]
 }
 
 @Composable

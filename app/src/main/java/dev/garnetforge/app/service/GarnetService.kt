@@ -144,19 +144,31 @@ class GarnetService : Service() {
             profileMapAge = now
         }
 
-        val rawPkg   = getForegroundPackage()
+        val rawPkg     = getForegroundPackage()
         val isLauncher = rawPkg != null && isLauncherPkg(rawPkg)
+        val isSysUI    = rawPkg != null && isSystemService(rawPkg)
+
+        // System UI (Quick Settings, notifications, etc.) is transparent to per-app logic.
+        // When sysUI is in the foreground, we don't restore — the real app is still "running".
+        if (isSysUI) return
+
         val pkg = if (rawPkg == null || isLauncher) null else rawPkg
 
-        if (pkg == lastPkg && !isLauncher) return
-        // Brief dwell — ignore if pkg flipped back within one poll cycle
-        if (pkg != null && pkg != lastPkg) {
-            delay(600)
+        // No change — nothing to do
+        if (pkg == lastPkg) return
+
+        // New package appeared — apply short dwell to avoid flicker on fast transitions
+        if (pkg != null) {
+            delay(400)
+            // Re-read after dwell; if it changed again, skip this transition
             val recheck = getForegroundPackage()
+            val recheckSysUI = recheck != null && isSystemService(recheck)
+            if (recheckSysUI) return   // sysUI appeared during dwell — ignore
             val recheckIsLauncher = recheck != null && isLauncherPkg(recheck)
             val stable = if (recheck == null || recheckIsLauncher) null else recheck
-            if (stable != pkg) return   // already changed, skip
+            if (stable != pkg) return   // pkg already changed, skip
         }
+
         lastPkg = pkg ?: ""
 
         if (pkg == null) { restoreIfNeeded(); return }
