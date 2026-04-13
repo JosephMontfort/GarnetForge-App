@@ -20,48 +20,58 @@ import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
 import java.time.LocalTime
+import kotlinx.coroutines.delay
 
-// ── Welcome messages by time block ────────────────────────────────────
-private val MORNING_MSGS = listOf(
+private val ALL_MSGS = listOf(
+    // Morning
     "Rise and grind. Your kernel won't tune itself.",
     "Good morning. Coffee first, overclocking second.",
     "Early bird optimises the clock.",
-    "Morning! Let's see if the thermals survived the night.",
     "Still half asleep? Your CPU isn't.",
-)
-private val AFTERNOON_MSGS = listOf(
-    "Good afternoon. Thermals look spicy.",
+    "Morning! Hope your thermals are cooler than your attitude.",
+    "Another day, another opportunity to blame the scheduler.",
+    "Good morning. The governor has been waiting for you.",
+    "Fresh boot energy. Let's not waste it.",
+    "Morning. Temperatures look stable. Unlike your sleep schedule.",
+    "Rise, shine, and check those clock speeds.",
+    // Afternoon
     "Peak hours, peak clocks. You know the drill.",
     "Afternoon check-in — is the governor behaving?",
-    "Midday. Perfect time to rethink that max frequency.",
     "Good afternoon. The big cores say hi.",
-)
-private val EVENING_MSGS = listOf(
+    "Midday. Perfect time to rethink that max frequency.",
+    "Hot outside? Thermals disagree. Or agree. Hard to tell.",
+    "Afternoon slump? Tell that to the little cluster.",
+    "Still tweaking? Respect. No judgement here.",
+    "The SoC is running. You are running. Parallel processing.",
+    "Good afternoon. Power levels nominal. Ambitions: excessive.",
+    "Half the day gone. Core 4 hasn't even broken a sweat.",
+    // Evening
     "Evening. Time to dial it back — or don't.",
     "Good evening. The phone deserves a break. Maybe.",
     "Winding down? Your CPU disagrees.",
     "Evening. Let's check if today's tweaks held up.",
     "Sunset clocks. Poetic, yet technically irrelevant.",
-)
-private val NIGHT_MSGS = listOf(
+    "One more profile tweak before bed? Just one.",
+    "Evening. The scheduler is tired. Are you?",
+    "Good evening. ZRAM is still doing its thing silently.",
+    "Dusk performance report: surprisingly decent.",
+    "Evening. The walt governor has had a long day.",
+    // Night
     "Burning midnight oil? So is core 4.",
     "It's late. The scheduler is judging you.",
     "Night mode: you're using it. The CPU isn't.",
     "Still here? Respect. The big cluster respects you back.",
     "Post-midnight tweaking — a proud GarnetForge tradition.",
+    "Late night debugging. The kernel approves.",
+    "Everyone else is asleep. The governor never sleeps.",
+    "Night owl mode activated. Thermal profile: spicy.",
+    "You and the CPU, both refusing to sleep.",
+    "The only light in the room is your phone. And your ambitions.",
 )
 
-private fun getWelcomeMessage(): String {
-    val h = LocalTime.now().hour
-    val pool = when {
-        h in 5..11  -> MORNING_MSGS
-        h in 12..16 -> AFTERNOON_MSGS
-        h in 17..21 -> EVENING_MSGS
-        else         -> NIGHT_MSGS
-    }
-    // Deterministic but changes each minute
-    val idx = (LocalTime.now().minute % pool.size)
-    return pool[idx]
+private fun msgForNow(): String {
+    val seed = System.currentTimeMillis() / 60_000   // changes every minute
+    return ALL_MSGS[(seed % ALL_MSGS.size).toInt()]
 }
 
 @Composable
@@ -71,6 +81,15 @@ fun DashboardScreen(
     sconfig: String,
     onClearRam: () -> Unit,
 ) {
+    // Rotate message every 60 seconds
+    var welcome by remember { mutableStateOf(msgForNow()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            welcome = msgForNow()
+        }
+    }
+
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
@@ -78,31 +97,23 @@ fun DashboardScreen(
     ) {
         Spacer(Modifier.height(8.dp))
 
-        // Time + welcome message
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(stats.timeStr,
-                    style = MaterialTheme.typography.titleLarge,
+        // Time + welcome message — message fills remaining width
+        Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(10.dp), Alignment.Top) {
+            Column {
+                Text(stats.timeStr, style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 28.sp)
+                    color = MaterialTheme.colorScheme.onBackground, fontSize = 28.sp)
                 Text("GarnetForge · Garnet",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            // Welcome bubble
-            val welcome = remember { getWelcomeMessage() }
             Box(
-                Modifier
-                    .widthIn(max = 180.dp)
-                    .clip(RoundedCornerShape(12.dp, 4.dp, 12.dp, 12.dp))
+                Modifier.weight(1f).clip(RoundedCornerShape(4.dp, 12.dp, 12.dp, 12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
-                Text(welcome,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 16.sp)
+                Text(welcome, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 16.sp)
             }
         }
 
@@ -110,21 +121,20 @@ fun DashboardScreen(
         GarnetCard(glowColor = GarnetGlow) {
             FreqBar("Little Cluster (0–3)", stats.cpu0FreqMhz, 691, 1958, ColorGreen)
             Spacer(Modifier.height(14.dp))
-            FreqBar("Big Cluster (4–7)",   stats.cpu4FreqMhz, 691, 2400, MaterialTheme.colorScheme.primary)
+            FreqBar("Big Cluster (4–7)", stats.cpu4FreqMhz, 691, 2400, MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(14.dp))
-            FreqBar("GPU · Adreno",        stats.gpuFreqMhz,  295, 940,  PurpleLight)
+            FreqBar("GPU · Adreno", stats.gpuFreqMhz, 295, 940, PurpleLight)
         }
 
         SectionHeader("STATUS")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // CPU temp — use Developer Board icon (more CPU-like)
             StatChip(Icons.Default.DeveloperBoard, "${stats.cpuTempC}°", "CPU",     ColorGreen,  Modifier.weight(1f))
             StatChip(Icons.Default.FlashOn,        "${stats.gpuTempC}°", "GPU",     ColorCool,   Modifier.weight(1f))
             StatChip(Icons.Default.Memory,         "${stats.ddrTempC}°", "DDR",     ColorGold,   Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatChip(Icons.Default.BatteryFull,    "${stats.battTempC}°","Battery", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-            StatChip(Icons.Default.Storage,        "${stats.freeRamMb}MB","Free RAM",ColorBlue,  Modifier.weight(1f))
+            StatChip(Icons.Default.BatteryFull, "${stats.battTempC}°", "Battery", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+            StatChip(Icons.Default.Storage, "${stats.freeRamMb}MB", "Free RAM", ColorBlue, Modifier.weight(1f))
             BroomChip(onClearRam, Modifier.weight(1f))
         }
 
@@ -136,10 +146,8 @@ fun DashboardScreen(
 private fun StatChip(icon: ImageVector, value: String, label: String, color: Color, modifier: Modifier) {
     Box(modifier.clip(RoundedCornerShape(16.dp))
         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
-        .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(vertical = 14.dp, horizontal = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
+        .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(vertical = 14.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, Modifier.size(18.dp), tint = color)
             Spacer(Modifier.height(4.dp))
             Text(value, style = MaterialTheme.typography.titleMedium, color = color, fontWeight = FontWeight.ExtraBold)
@@ -152,18 +160,16 @@ private fun StatChip(icon: ImageVector, value: String, label: String, color: Col
 private fun BroomChip(onClick: () -> Unit, modifier: Modifier) {
     var clicked by remember { mutableStateOf(false) }
     val angle by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (clicked) 30f else -10f,
-        animationSpec = androidx.compose.animation.core.spring(
+        if (clicked) 30f else -10f,
+        androidx.compose.animation.core.spring(
             androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
             androidx.compose.animation.core.Spring.StiffnessMedium),
         finishedListener = { clicked = false }, label = "broom")
     Box(modifier.clip(RoundedCornerShape(16.dp))
         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
         .background(MaterialTheme.colorScheme.surfaceVariant)
-        .clickable { clicked = true; onClick() },
-        contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(vertical = 14.dp, horizontal = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
+        .clickable { clicked = true; onClick() }, contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(vertical = 14.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Default.CleaningServices, null,
                 Modifier.size(18.dp).graphicsLayer(rotationZ = angle), tint = PurpleLight)
             Spacer(Modifier.height(4.dp))

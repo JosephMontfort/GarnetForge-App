@@ -31,7 +31,7 @@ class SysfsRepository(private val context: Context) {
         const val GPU_MIN       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/min_freq"
         const val GPU_CUR       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/cur_freq"
         const val SWAPPINESS    = "/proc/sys/vm/swappiness"
-        const val GPU_PWRLEVEL  = "/sys/class/kgsl/kgsl-3d0/pwrlevel"
+        const val GPU_PWRLEVEL  = "/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel"
         const val GPU_IDLE_TIMER= "/sys/class/kgsl/kgsl-3d0/idle_timer"
         const val THERMAL_BOOST = "/sys/class/thermal/thermal_message/boost"
         const val DEFAULTS      = "$INSTALL_DIR/defaults.prop"
@@ -256,6 +256,7 @@ class SysfsRepository(private val context: Context) {
                 gov0          = m["gov0"],
                 gov4          = m["gov4"],
                 offlinedCores = offlined,
+                presetId      = m["preset_id"],
             )
         }.toMap()
     }
@@ -281,6 +282,7 @@ class SysfsRepository(private val context: Context) {
             profile.gov0?.let    { append(",gov0:$it") }
             profile.gov4?.let    { append(",gov4:$it") }
             if (profile.offlinedCores.isNotEmpty()) append(",cores:${profile.offlinedCores.sorted().joinToString("+")}")
+            profile.presetId?.let { append(",preset_id:$it") }
         }
         Shell.cmd("printf '${pkg}=${data}\\n' >> $APP_PROFILES").exec()
     }

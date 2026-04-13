@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -30,9 +31,10 @@ private val CPU_B_FB  = listOf(691200,960000,1190400,1344000,1497600,1651200,190
 private val GPU_FB    = listOf(295,345,500,600,650,734,816,875,940)
 private val GOVS_I    = listOf("walt","conservative","powersave","performance","schedutil")
 private fun <T> List<T>.orFallback(fb: List<T>) = if (size < 2) fb else this
-private fun ci(l: List<Int>, v: Int?) = v?.let { x -> l.indices.minByOrNull { i -> kotlin.math.abs(l[i] - x) } } ?: 0
+private fun ciI(l: List<Int>, v: Int?) = v?.let { x -> l.indices.minByOrNull { i -> kotlin.math.abs(l[i] - x) } } ?: 0
 
-// ── Screen ─────────────────────────────────────────────────────────────
+enum class AppFilter { ALL, WITH_PROFILE, WITHOUT_PROFILE }
+
 @Composable
 fun IntelligenceScreen(
     config: GarnetConfig,
@@ -48,12 +50,22 @@ fun IntelligenceScreen(
     onSavePreset: (ProfilePreset) -> Unit,
     onDeletePreset: (String) -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
-    val filtered = remember(apps, query) {
-        if (query.isBlank()) apps else apps.filter { it.label.contains(query, true) || it.pkg.contains(query, true) }
-    }
-    var editingPkg    by remember { mutableStateOf<String?>(null) }
+    var query        by remember { mutableStateOf("") }
+    var filter       by remember { mutableStateOf(AppFilter.ALL) }
+    var editingPkg   by remember { mutableStateOf<String?>(null) }
     var showPresetMgr by remember { mutableStateOf(false) }
+
+    val filtered = remember(apps, query, filter) {
+        apps.filter { app ->
+            val matchQ = query.isBlank() || app.label.contains(query, true) || app.pkg.contains(query, true)
+            val matchF = when (filter) {
+                AppFilter.ALL -> true
+                AppFilter.WITH_PROFILE -> app.enabled || app.presetId != null || app.cpu0Max != null
+                AppFilter.WITHOUT_PROFILE -> !app.enabled && app.presetId == null && app.cpu0Max == null
+            }
+            matchQ && matchF
+        }
+    }
     val editingApp = remember(editingPkg, apps) { apps.find { it.pkg == editingPkg } }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -61,35 +73,33 @@ fun IntelligenceScreen(
         if (config.perAppThermal && apps.isEmpty()) onLoadApps()
     }
 
-    // Preset manager sheet
     if (showPresetMgr) {
         PresetManagerSheet(
-            presets       = presets,
-            availFreqsL   = availFreqsL.orFallback(CPU_L_FB),
-            availFreqsB   = availFreqsB.orFallback(CPU_B_FB),
+            presets = presets,
+            availFreqsL = availFreqsL.orFallback(CPU_L_FB),
+            availFreqsB = availFreqsB.orFallback(CPU_B_FB),
             availFreqsGpu = availFreqsGpu.orFallback(GPU_FB),
-            sheetState    = sheetState,
-            onDismiss     = { showPresetMgr = false },
-            onSave        = onSavePreset,
-            onDelete      = onDeletePreset,
+            sheetState = sheetState,
+            onDismiss = { showPresetMgr = false },
+            onSave = onSavePreset,
+            onDelete = onDeletePreset,
         )
     }
 
-    // Per-app profile editor sheet
     if (editingPkg != null && editingApp != null) {
         val cap = editingApp
         AppProfileSheet(
-            app           = cap,
-            presets       = presets,
-            availFreqsL   = availFreqsL.orFallback(CPU_L_FB),
-            availFreqsB   = availFreqsB.orFallback(CPU_B_FB),
+            app = cap,
+            presets = presets,
+            availFreqsL = availFreqsL.orFallback(CPU_L_FB),
+            availFreqsB = availFreqsB.orFallback(CPU_B_FB),
             availFreqsGpu = availFreqsGpu.orFallback(GPU_FB),
-            sheetState    = sheetState,
-            onDismiss     = { disabledProfile ->
-                if (disabledProfile != null) onSaveProfile(cap.pkg, disabledProfile)
+            sheetState = sheetState,
+            onDismiss = { saved ->
+                if (saved != null) onSaveProfile(cap.pkg, saved)
                 editingPkg = null
             },
-            onSave        = { profile -> onSaveProfile(cap.pkg, profile); editingPkg = null },
+            onSave = { profile -> onSaveProfile(cap.pkg, profile); editingPkg = null },
         )
     }
 
@@ -99,11 +109,11 @@ fun IntelligenceScreen(
                 SectionHeader("AUTOMATION")
                 GarnetCard(glowColor = if (config.nightMode || config.thermalControl) GarnetGlow else PurpleGlow) {
                     LabeledSwitch("Screen-Off Save",
-                        "Offlines extra cores on screen-off to save battery. Restores instantly on wake.",
+                        "Offlines extra cores on screen-off. Restores on wake.",
                         config.nightMode) { onSet("night_mode", if (it) "1" else "0") }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
                     LabeledSwitch("Charging Control",
-                        "Switches to Charging thermal profile (sconfig 32) when charger connected.",
+                        "Switches to Charging thermal profile when charger connected.",
                         config.thermalControl) { onSet("thermal_control", if (it) "1" else "0") }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
                     LabeledSwitch("Per-App Profiles",
@@ -114,14 +124,16 @@ fun IntelligenceScreen(
             }
 
             if (config.perAppThermal) {
-                // Configure Presets button
                 item {
                     SectionHeader("APP PROFILES")
-                    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    // Preset manager row
+                    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Column {
-                            Text("Configure Presets", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                            Text("${presets.size} preset${if (presets.size == 1) "" else "s"} saved",
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Preset Profiles", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                            Text("${presets.size} preset${if (presets.size == 1) "" else "s"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         FilledTonalButton(onClick = { showPresetMgr = true },
                             colors = ButtonDefaults.filledTonalButtonColors(containerColor = CardColor2)) {
@@ -131,20 +143,62 @@ fun IntelligenceScreen(
                         }
                     }
 
-                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), Arrangement.spacedBy(8.dp), Alignment.CenterVertically) {
-                        OutlinedTextField(value = query, onValueChange = { query = it }, Modifier.weight(1f),
-                            placeholder = { Text("Search apps…") },
-                            leadingIcon = { Icon(Icons.Default.Search, null) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = BorderCol,
-                                focusedContainerColor = CardColor, unfocusedContainerColor = CardColor),
-                            shape = RoundedCornerShape(14.dp))
-                        FilledTonalIconButton(onClick = onLoadApps,
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(CardColor2)) {
-                            if (appsLoading) CircularProgressIndicator(Modifier.size(18.dp),
-                                color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-                            else Icon(Icons.Default.Refresh, "Refresh", tint = MaterialTheme.colorScheme.primary)
+                    // Search + clear
+                    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                        placeholder = { Text("Search apps…") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        trailingIcon = {
+                            Row {
+                                if (query.isNotEmpty()) {
+                                    IconButton(onClick = { query = "" }) {
+                                        Icon(Icons.Default.Close, "Clear search",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                FilledTonalIconButton(onClick = onLoadApps,
+                                    colors = IconButtonDefaults.filledTonalIconButtonColors(CardColor2)) {
+                                    if (appsLoading) CircularProgressIndicator(Modifier.size(14.dp),
+                                        color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                                    else Icon(Icons.Default.Refresh, "Refresh",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor    = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor  = BorderCol,
+                            focusedContainerColor = if (isLight) Color.White else CardColor,
+                            unfocusedContainerColor = if (isLight) Color.White else CardColor,
+                            focusedTextColor      = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor    = MaterialTheme.colorScheme.onSurface,
+                            cursorColor           = MaterialTheme.colorScheme.primary,
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                    )
+
+                    // Filter chips
+                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AppFilter.values().forEach { f ->
+                            FilterChip(
+                                selected = filter == f,
+                                onClick = { filter = f },
+                                label = { Text(when(f) {
+                                    AppFilter.ALL -> "All"
+                                    AppFilter.WITH_PROFILE -> "With Profile"
+                                    AppFilter.WITHOUT_PROFILE -> "Without Profile"
+                                }, style = MaterialTheme.typography.bodySmall) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = Color.White,
+                                ),
+                            )
                         }
                     }
                 }
@@ -152,7 +206,8 @@ fun IntelligenceScreen(
                 if (apps.isEmpty() && !appsLoading) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
-                            Text("Tap ↻ to load installed apps", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Tap ↻ to load installed apps",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 } else {
@@ -167,20 +222,21 @@ fun IntelligenceScreen(
     }
 }
 
-// ── App row ────────────────────────────────────────────────────────────
 @Composable
 private fun AppRow(app: AppProfile, presets: List<ProfilePreset>, onClick: () -> Unit) {
     val presetName = app.presetId?.let { id -> presets.find { it.id == id }?.name }
-    val hasSettings = app.enabled && (app.cpu0Max != null || app.cpu4Max != null || app.gpuMax != null
-        || app.thermal != null || app.offlinedCores.isNotEmpty() || app.presetId != null)
+    // Only show "Saved (inactive)" if the app actually has a saved profile (was explicitly saved before)
+    val hasSavedProfile = app.presetId != null || app.cpu0Max != null || app.cpu4Max != null
+        || app.gpuMax != null || app.thermal != null || app.offlinedCores.isNotEmpty()
     ListItem(
         headlineContent = {
-            Text(app.label, color = if (app.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            Text(app.label,
+                color = if (app.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyLarge)
         },
         supportingContent = {
-            if (hasSettings) {
-                val parts = buildList {
+            if (app.enabled && hasSavedProfile) {
+                val summary = buildList {
                     presetName?.let { add("Preset: $it") } ?: run {
                         app.thermal?.let { add(ThermalProfile.fromSconfig(it).label) }
                         app.cpu0Max?.let { add("L:${it/1000}M") }
@@ -189,22 +245,26 @@ private fun AppRow(app: AppProfile, presets: List<ProfilePreset>, onClick: () ->
                         if (app.offlinedCores.isNotEmpty()) add("−${app.offlinedCores.size} cores")
                     }
                 }.joinToString(" · ")
-                Text(parts.ifEmpty { "Custom" }, style = MaterialTheme.typography.labelSmall,
+                Text(summary.ifEmpty { "Custom" }, style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary.copy(0.8f))
-            } else if (!app.enabled && (app.cpu0Max != null || app.presetId != null)) {
-                Text("Saved (inactive)", style = MaterialTheme.typography.labelSmall,
+            } else if (!app.enabled && hasSavedProfile) {
+                Text("Saved · inactive", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Text(app.pkg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(app.pkg, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        trailingContent = { Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        trailingContent = {
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        },
         modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = if (app.enabled) GarnetDeep.copy(0.08f) else MaterialTheme.colorScheme.background),
+        colors = ListItemDefaults.colors(
+            containerColor = if (app.enabled) GarnetDeep.copy(0.08f) else MaterialTheme.colorScheme.background),
     )
 }
 
-// ── Per-app profile sheet ──────────────────────────────────────────────
+// ── Per-app profile sheet ─────────────────────────────────────────────
 @Composable
 private fun AppProfileSheet(
     app: AppProfile,
@@ -213,34 +273,35 @@ private fun AppProfileSheet(
     availFreqsB: List<Int>,
     availFreqsGpu: List<Int>,
     sheetState: SheetState,
-    onDismiss: (AppProfile?) -> Unit,
+    onDismiss: (AppProfile?) -> Unit,  // null = don't save; AppProfile = save this
     onSave: (AppProfile?) -> Unit,
 ) {
     val context = LocalContext.current
-    var enabled   by remember { mutableStateOf(app.enabled) }
-    // Selection: null = custom, else preset id
-    var presetSel by remember { mutableStateOf(app.presetId) }
-    var showCustom by remember { mutableStateOf(app.presetId == null) }
+    var enabled    by remember { mutableStateOf(app.enabled) }
+    var presetSel  by remember { mutableStateOf(app.presetId) }
+    // showCustom: only expand when Custom explicitly selected
+    var showCustom by remember { mutableStateOf(false) }
+    // Track if Save was explicitly clicked
+    var savedOnce  by remember { mutableStateOf(false) }
 
-    // Custom profile state
     var thermal   by remember { mutableStateOf(app.thermal) }
     var gov0      by remember { mutableStateOf(app.gov0) }
     var gov4      by remember { mutableStateOf(app.gov4) }
-    var cpu0MinI  by remember { mutableIntStateOf(ci(availFreqsL, app.cpu0Min)) }
-    var cpu0MaxI  by remember { mutableIntStateOf(ci(availFreqsL, app.cpu0Max ?: availFreqsL.lastOrNull())) }
-    var cpu4MinI  by remember { mutableIntStateOf(ci(availFreqsB, app.cpu4Min)) }
-    var cpu4MaxI  by remember { mutableIntStateOf(ci(availFreqsB, app.cpu4Max ?: availFreqsB.lastOrNull())) }
-    var gpuMinI   by remember { mutableIntStateOf(ci(availFreqsGpu, app.gpuMin)) }
-    var gpuMaxI   by remember { mutableIntStateOf(ci(availFreqsGpu, app.gpuMax ?: availFreqsGpu.lastOrNull())) }
+    var cpu0MinI  by remember { mutableIntStateOf(ciI(availFreqsL, app.cpu0Min)) }
+    var cpu0MaxI  by remember { mutableIntStateOf(ciI(availFreqsL, app.cpu0Max ?: availFreqsL.lastOrNull())) }
+    var cpu4MinI  by remember { mutableIntStateOf(ciI(availFreqsB, app.cpu4Min)) }
+    var cpu4MaxI  by remember { mutableIntStateOf(ciI(availFreqsB, app.cpu4Max ?: availFreqsB.lastOrNull())) }
+    var gpuMinI   by remember { mutableIntStateOf(ciI(availFreqsGpu, app.gpuMin)) }
+    var gpuMaxI   by remember { mutableIntStateOf(ciI(availFreqsGpu, app.gpuMax ?: availFreqsGpu.lastOrNull())) }
     var offlined  by remember { mutableStateOf(app.offlinedCores) }
 
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    val tRed    = if (isLight) GarnetRed else MaterialTheme.colorScheme.primary
-    val tBlue   = if (isLight) androidx.compose.ui.graphics.Color(0xFF0288D1) else ColorBlue
-    val tPurple = if (isLight) androidx.compose.ui.graphics.Color(0xFF6A1B9A) else PurpleLight
-    val tCool   = if (isLight) androidx.compose.ui.graphics.Color(0xFF00695C) else ColorCool
+    val tRed    = if (isLight) GarnetRed    else MaterialTheme.colorScheme.primary
+    val tBlue   = if (isLight) Color(0xFF0288D1) else ColorBlue
+    val tPurple = if (isLight) Color(0xFF6A1B9A) else PurpleLight
+    val tCool   = if (isLight) Color(0xFF00695C) else ColorCool
 
-    fun buildFromCustom() = AppProfile(
+    fun buildCustom() = AppProfile(
         pkg = app.pkg, label = app.label, enabled = enabled, presetId = null,
         thermal = thermal, gov0 = gov0, gov4 = gov4,
         cpu0Min = if (cpu0MinI == 0 && app.cpu0Min == null) null else availFreqsL.getOrNull(cpu0MinI),
@@ -251,107 +312,125 @@ private fun AppProfileSheet(
         gpuMax  = availFreqsGpu.getOrNull(gpuMaxI),
         offlinedCores = offlined,
     )
-    fun buildFromPreset() = AppProfile(
-        pkg = app.pkg, label = app.label, enabled = enabled, presetId = presetSel,
-    )
+    fun buildPreset() = AppProfile(pkg = app.pkg, label = app.label, enabled = enabled, presetId = presetSel)
 
-    ModalBottomSheet(onDismissRequest = { onDismiss(if (!enabled) buildFromCustom() else null) },
-        sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surface) {
+    ModalBottomSheet(
+        onDismissRequest = {
+            // Only auto-save on dismiss if user explicitly saved before (to handle toggle-off case)
+            onDismiss(if (savedOnce && !enabled) (if (presetSel != null) buildPreset() else buildCustom()).copy(enabled = false) else null)
+        },
+        sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surface
+    ) {
         Column(Modifier.fillMaxWidth()) {
-            // Scrollable content
-            Column(Modifier.fillMaxWidth().weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp).padding(top = 4.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)) {
-
-                // Header + toggle
+            Column(
+                Modifier.fillMaxWidth().weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp).padding(top = 4.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // App header + toggle
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(app.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(app.pkg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(app.pkg, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(if (enabled) "Active" else "Inactive", style = MaterialTheme.typography.bodySmall,
-                            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (enabled) "Active" else "Inactive",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (enabled) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant)
                         FancyToggle(enabled) { enabled = it }
                     }
                 }
 
-                HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-
-                // Preset picker
-                Text("Profile Source", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                if (presets.isEmpty()) {
-                    Text("No presets configured yet. Tap 'Manage' on the main page to create presets.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ProfileChip("Custom", presetSel == null) {
-                        presetSel = null; showCustom = true
-                        if (presets.isEmpty()) android.widget.Toast.makeText(context, "No preset configured", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                    presets.forEach { p ->
-                        ProfileChip(p.name, presetSel == p.id) { presetSel = p.id; showCustom = false }
-                    }
-                }
-
-                // Custom sliders — shown when Custom is selected
-                AnimatedVisibility(showCustom || presetSel == null,
-                    enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                // Only show profile options when toggle is ON
+                AnimatedVisibility(enabled, enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-                        Text("Thermal", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            ProfileChip("System", thermal == null) { thermal = null }
-                            ThermalProfile.values().forEach { p -> ProfileChip(p.label, thermal == p.sconfig) { thermal = p.sconfig } }
+
+                        // Preset / Custom selector
+                        Text("Profile Source", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            // "None" chip — selected by default if nothing chosen yet
+                            ProfileChip("None", presetSel == null && !showCustom) {
+                                presetSel = null; showCustom = false
+                            }
+                            presets.forEach { p ->
+                                ProfileChip(p.name, presetSel == p.id && !showCustom) {
+                                    presetSel = p.id; showCustom = false
+                                }
+                            }
+                            ProfileChip("Custom", showCustom) {
+                                presetSel = null; showCustom = true
+                                if (presets.isEmpty())
+                                    android.widget.Toast.makeText(context, "No presets configured", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         }
-                        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-                        Text("Little Cluster", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tRed)
-                        SheetSlider("Min", cpu0MinI.toFloat(), 0f, availFreqsL.lastIndex.toFloat(), (availFreqsL.size-2).coerceAtLeast(0),
-                            "${availFreqsL.getOrElse(cpu0MinI){0}/1000} MHz", tRed) { cpu0MinI=it.toInt() }
-                        SheetSlider("Max", cpu0MaxI.toFloat(), 0f, availFreqsL.lastIndex.toFloat(), (availFreqsL.size-2).coerceAtLeast(0),
-                            "${availFreqsL.getOrElse(cpu0MaxI){0}/1000} MHz", tRed) { cpu0MaxI=it.toInt() }
-                        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-                        Text("Big Cluster", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tRed)
-                        SheetSlider("Min", cpu4MinI.toFloat(), 0f, availFreqsB.lastIndex.toFloat(), (availFreqsB.size-2).coerceAtLeast(0),
-                            "${availFreqsB.getOrElse(cpu4MinI){0}/1000} MHz", tRed) { cpu4MinI=it.toInt() }
-                        SheetSlider("Max", cpu4MaxI.toFloat(), 0f, availFreqsB.lastIndex.toFloat(), (availFreqsB.size-2).coerceAtLeast(0),
-                            "${availFreqsB.getOrElse(cpu4MaxI){0}/1000} MHz", tRed) { cpu4MaxI=it.toInt() }
-                        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-                        Text("GPU", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tPurple)
-                        SheetSlider("Min", gpuMinI.toFloat(), 0f, availFreqsGpu.lastIndex.toFloat(), (availFreqsGpu.size-2).coerceAtLeast(0),
-                            "${availFreqsGpu.getOrElse(gpuMinI){0}} MHz", tPurple) { gpuMinI=it.toInt() }
-                        SheetSlider("Max", gpuMaxI.toFloat(), 0f, availFreqsGpu.lastIndex.toFloat(), (availFreqsGpu.size-2).coerceAtLeast(0),
-                            "${availFreqsGpu.getOrElse(gpuMaxI){0}} MHz", tPurple) { gpuMaxI=it.toInt() }
-                        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-                        Text("Governor", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tBlue)
-                        Text("Little", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            ProfileChip("System", gov0 == null) { gov0 = null }
-                            GOVS_I.forEach { g -> ProfileChip(g, gov0 == g) { gov0 = g } }
-                        }
-                        Text("Big", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            ProfileChip("System", gov4 == null) { gov4 = null }
-                            GOVS_I.forEach { g -> ProfileChip(g, gov4 == g) { gov4 = g } }
-                        }
-                        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-                        Text("Core Control", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tCool)
-                        Text("Core 0 and Core 4 always stay online.", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Little:", style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.align(Alignment.CenterVertically).width(44.dp))
-                            CoreToggle(0, true, true, context) {}
-                            (1..3).forEach { c -> CoreToggle(c, c !in offlined, false, context) { offlined = if (c in offlined) offlined-c else offlined+c } }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Big:", style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.align(Alignment.CenterVertically).width(44.dp))
-                            CoreToggle(4, true, true, context) {}
-                            (5..7).forEach { c -> CoreToggle(c, c !in offlined, false, context) { offlined = if (c in offlined) offlined-c else offlined+c } }
+
+                        // Custom sliders — only when Custom explicitly selected
+                        AnimatedVisibility(showCustom, enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+                                Text("Thermal", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    ProfileChip("System", thermal == null) { thermal = null }
+                                    ThermalProfile.values().forEach { p ->
+                                        ProfileChip(p.label, thermal == p.sconfig) { thermal = p.sconfig }
+                                    }
+                                }
+                                HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+                                Text("Little Cluster", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tRed)
+                                SheetSlider("Min", cpu0MinI.toFloat(), 0f, availFreqsL.lastIndex.toFloat(), (availFreqsL.size-2).coerceAtLeast(0),
+                                    "${availFreqsL.getOrElse(cpu0MinI){0}/1000} MHz", tRed) { cpu0MinI = it.toInt() }
+                                SheetSlider("Max", cpu0MaxI.toFloat(), 0f, availFreqsL.lastIndex.toFloat(), (availFreqsL.size-2).coerceAtLeast(0),
+                                    "${availFreqsL.getOrElse(cpu0MaxI){0}/1000} MHz", tRed) { cpu0MaxI = it.toInt() }
+                                HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+                                Text("Big Cluster", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tRed)
+                                SheetSlider("Min", cpu4MinI.toFloat(), 0f, availFreqsB.lastIndex.toFloat(), (availFreqsB.size-2).coerceAtLeast(0),
+                                    "${availFreqsB.getOrElse(cpu4MinI){0}/1000} MHz", tRed) { cpu4MinI = it.toInt() }
+                                SheetSlider("Max", cpu4MaxI.toFloat(), 0f, availFreqsB.lastIndex.toFloat(), (availFreqsB.size-2).coerceAtLeast(0),
+                                    "${availFreqsB.getOrElse(cpu4MaxI){0}/1000} MHz", tRed) { cpu4MaxI = it.toInt() }
+                                HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+                                Text("GPU", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tPurple)
+                                SheetSlider("Min", gpuMinI.toFloat(), 0f, availFreqsGpu.lastIndex.toFloat(), (availFreqsGpu.size-2).coerceAtLeast(0),
+                                    "${availFreqsGpu.getOrElse(gpuMinI){0}} MHz", tPurple) { gpuMinI = it.toInt() }
+                                SheetSlider("Max", gpuMaxI.toFloat(), 0f, availFreqsGpu.lastIndex.toFloat(), (availFreqsGpu.size-2).coerceAtLeast(0),
+                                    "${availFreqsGpu.getOrElse(gpuMaxI){0}} MHz", tPurple) { gpuMaxI = it.toInt() }
+                                HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+                                Text("Governor", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tBlue)
+                                Text("Little", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    ProfileChip("System", gov0 == null) { gov0 = null }
+                                    GOVS_I.forEach { g -> ProfileChip(g, gov0 == g) { gov0 = g } }
+                                }
+                                Text("Big", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    ProfileChip("System", gov4 == null) { gov4 = null }
+                                    GOVS_I.forEach { g -> ProfileChip(g, gov4 == g) { gov4 = g } }
+                                }
+                                HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+                                Text("Core Control", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = tCool)
+                                Text("Core 0 and Core 4 always stay online.", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Little:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.align(Alignment.CenterVertically).width(44.dp))
+                                    CoreToggle(0, true, true, context) {}
+                                    (1..3).forEach { c -> CoreToggle(c, c !in offlined, false, context) { offlined = if (c in offlined) offlined-c else offlined+c } }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Big:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.align(Alignment.CenterVertically).width(44.dp))
+                                    CoreToggle(4, true, true, context) {}
+                                    (5..7).forEach { c -> CoreToggle(c, c !in offlined, false, context) { offlined = if (c in offlined) offlined-c else offlined+c } }
+                                }
+                            }
                         }
                     }
                 }
@@ -370,10 +449,11 @@ private fun AppProfileSheet(
                 AnimatedVisibility(enabled, modifier = Modifier.weight(2f),
                     enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
                     Button(onClick = {
-                        onSave(if (presetSel != null) buildFromPreset() else buildFromCustom())
+                        savedOnce = true
+                        onSave(if (presetSel != null && !showCustom) buildPreset() else buildCustom())
                     }, Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                        Text("Save Profile", color = androidx.compose.ui.graphics.Color.White)
+                        Text("Save Profile", color = Color.White)
                     }
                 }
             }
@@ -381,30 +461,24 @@ private fun AppProfileSheet(
     }
 }
 
-// ── Preset Manager Sheet ───────────────────────────────────────────────
+// ── Preset Manager ────────────────────────────────────────────────────
 @Composable
 private fun PresetManagerSheet(
     presets: List<ProfilePreset>,
-    availFreqsL: List<Int>,
-    availFreqsB: List<Int>,
-    availFreqsGpu: List<Int>,
+    availFreqsL: List<Int>, availFreqsB: List<Int>, availFreqsGpu: List<Int>,
     sheetState: SheetState,
-    onDismiss: () -> Unit,
-    onSave: (ProfilePreset) -> Unit,
-    onDelete: (String) -> Unit,
+    onDismiss: () -> Unit, onSave: (ProfilePreset) -> Unit, onDelete: (String) -> Unit,
 ) {
     var editingPreset by remember { mutableStateOf<ProfilePreset?>(null) }
     var showEditor    by remember { mutableStateOf(false) }
 
     if (showEditor) {
         PresetEditorSheet(
-            preset        = editingPreset,
-            availFreqsL   = availFreqsL,
-            availFreqsB   = availFreqsB,
-            availFreqsGpu = availFreqsGpu,
-            sheetState    = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            onDismiss     = { showEditor = false; editingPreset = null },
-            onSave        = { p -> onSave(p); showEditor = false; editingPreset = null },
+            preset = editingPreset,
+            availFreqsL = availFreqsL, availFreqsB = availFreqsB, availFreqsGpu = availFreqsGpu,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            onDismiss = { showEditor = false; editingPreset = null },
+            onSave = { p -> onSave(p); showEditor = false; editingPreset = null },
         )
         return
     }
@@ -422,9 +496,11 @@ private fun PresetManagerSheet(
                 }
             }
             if (presets.isEmpty()) {
-                Text("No presets yet. Create one to reuse settings across multiple apps.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
+                Text("No presets yet. Create one to reuse across multiple apps.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
             }
             presets.forEach { preset ->
                 val parts = buildList {
@@ -454,36 +530,33 @@ private fun PresetManagerSheet(
     }
 }
 
-// ── Preset Editor Sheet ────────────────────────────────────────────────
+// ── Preset Editor ─────────────────────────────────────────────────────
 @Composable
 private fun PresetEditorSheet(
     preset: ProfilePreset?,
-    availFreqsL: List<Int>,
-    availFreqsB: List<Int>,
-    availFreqsGpu: List<Int>,
+    availFreqsL: List<Int>, availFreqsB: List<Int>, availFreqsGpu: List<Int>,
     sheetState: SheetState,
-    onDismiss: () -> Unit,
-    onSave: (ProfilePreset) -> Unit,
+    onDismiss: () -> Unit, onSave: (ProfilePreset) -> Unit,
 ) {
-    var name     by remember { mutableStateOf(preset?.name ?: "") }
-    var thermal  by remember { mutableStateOf(preset?.thermal) }
-    var gov0     by remember { mutableStateOf(preset?.gov0) }
-    var gov4     by remember { mutableStateOf(preset?.gov4) }
-    var cpu0MinI by remember { mutableIntStateOf(ci(availFreqsL, preset?.cpu0Min)) }
-    var cpu0MaxI by remember { mutableIntStateOf(ci(availFreqsL, preset?.cpu0Max ?: availFreqsL.lastOrNull())) }
-    var cpu4MinI by remember { mutableIntStateOf(ci(availFreqsB, preset?.cpu4Min)) }
-    var cpu4MaxI by remember { mutableIntStateOf(ci(availFreqsB, preset?.cpu4Max ?: availFreqsB.lastOrNull())) }
-    var gpuMinI  by remember { mutableIntStateOf(ci(availFreqsGpu, preset?.gpuMin)) }
-    var gpuMaxI  by remember { mutableIntStateOf(ci(availFreqsGpu, preset?.gpuMax ?: availFreqsGpu.lastOrNull())) }
-    var offlined by remember { mutableStateOf(preset?.offlinedCores ?: emptySet()) }
+    var name      by remember { mutableStateOf(preset?.name ?: "") }
+    var thermal   by remember { mutableStateOf(preset?.thermal) }
+    var gov0      by remember { mutableStateOf(preset?.gov0) }
+    var gov4      by remember { mutableStateOf(preset?.gov4) }
+    var cpu0MinI  by remember { mutableIntStateOf(ciI(availFreqsL, preset?.cpu0Min)) }
+    var cpu0MaxI  by remember { mutableIntStateOf(ciI(availFreqsL, preset?.cpu0Max ?: availFreqsL.lastOrNull())) }
+    var cpu4MinI  by remember { mutableIntStateOf(ciI(availFreqsB, preset?.cpu4Min)) }
+    var cpu4MaxI  by remember { mutableIntStateOf(ciI(availFreqsB, preset?.cpu4Max ?: availFreqsB.lastOrNull())) }
+    var gpuMinI   by remember { mutableIntStateOf(ciI(availFreqsGpu, preset?.gpuMin)) }
+    var gpuMaxI   by remember { mutableIntStateOf(ciI(availFreqsGpu, preset?.gpuMax ?: availFreqsGpu.lastOrNull())) }
+    var offlined  by remember { mutableStateOf(preset?.offlinedCores ?: emptySet()) }
     var nameError by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    val tRed    = if (isLight) GarnetRed else MaterialTheme.colorScheme.primary
-    val tPurple = if (isLight) androidx.compose.ui.graphics.Color(0xFF6A1B9A) else PurpleLight
-    val tBlue   = if (isLight) androidx.compose.ui.graphics.Color(0xFF0288D1) else ColorBlue
-    val tCool   = if (isLight) androidx.compose.ui.graphics.Color(0xFF00695C) else ColorCool
+    val tRed    = if (isLight) GarnetRed    else MaterialTheme.colorScheme.primary
+    val tPurple = if (isLight) Color(0xFF6A1B9A) else PurpleLight
+    val tBlue   = if (isLight) Color(0xFF0288D1) else ColorBlue
+    val tCool   = if (isLight) Color(0xFF00695C) else ColorCool
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface) {
@@ -492,19 +565,18 @@ private fun PresetEditorSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp).padding(top = 4.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
-
                 Text(if (preset == null) "New Preset" else "Edit Preset",
                     style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-                OutlinedTextField(value = name, onValueChange = { name = it; nameError = false },
-                    label = { Text("Preset Name") },
-                    isError = nameError,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it; nameError = false },
+                    label = { Text("Preset Name") }, isError = nameError,
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        errorBorderColor = GarnetLight))
-
+                        errorBorderColor = GarnetLight,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    ))
                 HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
                 Text("Thermal", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -578,23 +650,25 @@ private fun PresetEditorSheet(
                     ))
                 }, Modifier.weight(2f),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                    Text("Save Preset", color = androidx.compose.ui.graphics.Color.White)
+                    Text("Save Preset", color = Color.White)
                 }
             }
         }
     }
 }
 
-// ── Shared composables ─────────────────────────────────────────────────
+// ── Shared composables ────────────────────────────────────────────────
 @Composable
 private fun CoreToggle(core: Int, online: Boolean, forced: Boolean, context: android.content.Context, onToggle: () -> Unit) {
-    val bg = when { forced -> GarnetDeep.copy(alpha = 0.55f); online -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.surfaceContainerHigh }
-    val tc = when { forced -> androidx.compose.ui.graphics.Color.White.copy(0.8f); online -> androidx.compose.ui.graphics.Color.White; else -> MaterialTheme.colorScheme.onSurfaceVariant }
-    Surface(onClick = { if (forced) android.widget.Toast.makeText(context, "Core $core must stay online", android.widget.Toast.LENGTH_SHORT).show() else onToggle() },
+    val bg = when { forced -> GarnetDeep.copy(0.55f); online -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.surfaceContainerHigh }
+    val tc = when { forced -> Color.White.copy(0.8f); online -> Color.White; else -> MaterialTheme.colorScheme.onSurfaceVariant }
+    Surface(
+        onClick = { if (forced) android.widget.Toast.makeText(context, "Core $core must stay online", android.widget.Toast.LENGTH_SHORT).show() else onToggle() },
         shape = RoundedCornerShape(10.dp), color = bg,
         border = BorderStroke(1.dp, if (forced) GarnetDeep else if (online) MaterialTheme.colorScheme.primary.copy(0.6f) else MaterialTheme.colorScheme.outline),
-        modifier = Modifier.size(40.dp), enabled = true) {
-        Column(Modifier.fillMaxSize(), androidx.compose.foundation.layout.Arrangement.Center, Alignment.CenterHorizontally) {
+        modifier = Modifier.size(40.dp), enabled = true
+    ) {
+        Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
             Text("C$core", style = MaterialTheme.typography.bodySmall, color = tc, fontWeight = FontWeight.Bold)
             Text(if (forced || online) "ON" else "OFF", style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp), color = tc.copy(0.8f))
         }
@@ -603,15 +677,15 @@ private fun CoreToggle(core: Int, online: Boolean, forced: Boolean, context: and
 
 @Composable
 private fun SheetSlider(label: String, value: Float, min: Float, max: Float, steps: Int,
-    display: String, tint: androidx.compose.ui.graphics.Color, onChange: (Float) -> Unit) {
+    display: String, tint: Color, onChange: (Float) -> Unit) {
     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(36.dp))
-        Slider(value = value, onValueChange = onChange, valueRange = min..max, steps = steps.coerceAtLeast(0),
-            modifier = Modifier.weight(1f),
+        Text(label, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(36.dp))
+        Slider(value = value, onValueChange = onChange, valueRange = min..max,
+            steps = steps.coerceAtLeast(0), modifier = Modifier.weight(1f),
             colors = SliderDefaults.colors(thumbColor = tint, activeTrackColor = tint,
                 inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(0.3f),
-                activeTickColor = androidx.compose.ui.graphics.Color.Transparent,
-                inactiveTickColor = androidx.compose.ui.graphics.Color.Transparent))
+                activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent))
         Text(display, style = MaterialTheme.typography.bodyMedium, color = tint, fontWeight = FontWeight.Bold,
             modifier = Modifier.width(76.dp), textAlign = TextAlign.End)
     }

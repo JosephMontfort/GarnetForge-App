@@ -42,7 +42,7 @@ private val CPU_L  = listOf(691200,960000,1190400,1344000,1497600,1651200,190080
 private val CPU_B  = listOf(691200,960000,1190400,1344000,1497600,1651200,1900800,2054400,2112000,2208000,2304000,2400000)
 private val GPU_S  = listOf(295,345,500,600,650,734,816,875,940)
 private val GOVS   = listOf("walt","conservative","powersave","performance","schedutil")
-private val ZRAM_B = listOf(1L,2L,3L,4L).map { it * 1_073_741_824L }
+private val ZRAM_B = listOf(1L,2L,3L,4L,6L,8L).map { it * 1_073_741_824L }
 private val ZRAM_ALGOS = listOf("lz4", "lzo", "zstd", "lzo-rle")
 private val READ_AHEAD_VALS = listOf(64, 128, 256, 512, 1024, 2048)
 private fun ci(l: List<Int>, v: Int) = l.indices.minByOrNull { kotlin.math.abs(l[it] - v) } ?: 0
@@ -619,8 +619,8 @@ private fun SectionContent(
                 onRevert = { vfs = nodeDefaults.vmVfsCachePressure; onSet("vm_vfs_cache_pressure", nodeDefaults.vmVfsCachePressure.toString()) },
                 info = "Tendency to reclaim inode/dentry cache. 100 = kernel default.",
             ) { onSet("vm_vfs_cache_pressure", vfs.toString()) }
-            RevertableSlider("ZRAM Size", zI.toFloat(), 0f, 3f, 2,
-                "${zI + 1} GB", tBlue, { zI = it.toInt() },
+            RevertableSlider("ZRAM Size", zI.toFloat(), 0f, 5f, 4,
+                "${listOf(1,2,3,4,6,8)[zI.coerceIn(0,5)]} GB", tBlue, { zI = it.toInt() },
                 onRevert = { zI = 3; onSet("zram_size", ZRAM_B[3].toString()) },
                 info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.",
             ) { onSet("zram_size", ZRAM_B[zI].toString()) }
