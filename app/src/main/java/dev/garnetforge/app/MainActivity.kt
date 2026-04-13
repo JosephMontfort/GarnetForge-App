@@ -215,7 +215,7 @@ private fun AppIconSplash() {
         Column(horizontalAlignment = Alignment.CenterHorizontally,
                verticalArrangement = Arrangement.spacedBy(24.dp)) {
             androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(R.mipmap.ic_launcher),
+                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_foreground),
                 contentDescription = "GarnetForge",
                 modifier = Modifier.size(96.dp)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
