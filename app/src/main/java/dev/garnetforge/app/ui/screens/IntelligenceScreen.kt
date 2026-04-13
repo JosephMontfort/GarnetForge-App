@@ -283,8 +283,9 @@ private fun AppProfileSheet(
     val hasCustomSaved = app.presetId == null && (app.cpu0Max != null || app.cpu4Max != null ||
         app.gpuMax != null || app.thermal != null || app.gov0 != null || app.offlinedCores.isNotEmpty())
     var showCustom by remember { mutableStateOf(hasCustomSaved) }
-    // Track if Save was explicitly clicked
-    var savedOnce  by remember { mutableStateOf(false) }
+    // Start as true if app already has a profile — so toggle-off on dismiss saves properly
+    val alreadyHasProfile = app.enabled || app.presetId != null || hasCustomSaved
+    var savedOnce  by remember { mutableStateOf(alreadyHasProfile) }
 
     var thermal   by remember { mutableStateOf(app.thermal) }
     var gov0      by remember { mutableStateOf(app.gov0) }
@@ -319,7 +320,9 @@ private fun AppProfileSheet(
     ModalBottomSheet(
         onDismissRequest = {
             // Only auto-save on dismiss if user explicitly saved before (to handle toggle-off case)
-            onDismiss(if (savedOnce && !enabled) (if (presetSel != null) buildPreset() else buildCustom()).copy(enabled = false) else null)
+            // If toggled off: always save disabled state so the profile is marked inactive
+            val hadProfile = app.enabled || app.presetId != null || hasCustomSaved
+            onDismiss(if (!enabled && hadProfile) (if (presetSel != null && !showCustom) buildPreset() else buildCustom()).copy(enabled = false) else null)
         },
         sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surface
     ) {
@@ -452,7 +455,9 @@ private fun AppProfileSheet(
                     enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
                     Button(onClick = {
                         savedOnce = true
-                        onSave(if (presetSel != null && !showCustom) buildPreset() else buildCustom())
+                        // None selected (no preset, no custom) = clear profile
+                        val isNoneSelected = presetSel == null && !showCustom
+                        onSave(if (isNoneSelected) null else if (presetSel != null) buildPreset() else buildCustom())
                     }, Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
                         Text("Save Profile", color = Color.White)

@@ -146,13 +146,13 @@ class GarnetService : Service() {
 
         val rawPkg = getForegroundPackage()
 
-        // System UI overlays (Quick Settings, notification shade, volume panel, etc.)
-        // sit on top of the real app without replacing it. Ignore them entirely —
-        // do NOT restore, do NOT update lastPkg.
-        if (rawPkg != null && isSystemService(rawPkg)) return
+        // No events from UsageStats — gap/lag on this device. Keep current state, do not restore.
+        if (rawPkg == null) return
+        // System UI overlays sit on top — not a real app switch. Do not restore.
+        if (isSystemService(rawPkg)) return
 
-        val isLauncher = rawPkg != null && isLauncherPkg(rawPkg)
-        val pkg = if (rawPkg == null || isLauncher) null else rawPkg
+        val isLauncher = isLauncherPkg(rawPkg)
+        val pkg = if (isLauncher) null else rawPkg
 
         // No change in real foreground — nothing to do
         if (pkg == lastPkg) return
@@ -161,10 +161,9 @@ class GarnetService : Service() {
         if (pkg != null) {
             delay(400)
             val recheck = getForegroundPackage()
-            // sysUI appeared during dwell → ignore transition
-            if (recheck != null && isSystemService(recheck)) return
-            val recheckIsLauncher = recheck != null && isLauncherPkg(recheck)
-            val stable = if (recheck == null || recheckIsLauncher) null else recheck
+            if (recheck == null) return                     // still unknown — stay put
+            if (isSystemService(recheck)) return            // sysUI during dwell — ignore
+            val stable = if (isLauncherPkg(recheck)) null else recheck
             if (stable != pkg) return
         }
 
