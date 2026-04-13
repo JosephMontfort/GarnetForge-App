@@ -48,6 +48,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _deviceInfo   = MutableStateFlow(DeviceInfo())
     private val _coreStates   = MutableStateFlow(List(8) { true })
     private val _dashboardReady= MutableStateFlow(false)
+    val dashboardReady = _dashboardReady.asStateFlow()
     private val _liveNodes    = MutableStateFlow(dev.garnetforge.app.data.model.LiveNodeValues())
     private val _nodeDefaults = MutableStateFlow(dev.garnetforge.app.data.model.NodeDefaults())
     private val _availFreqsL  = MutableStateFlow<List<Int>>(emptyList())

@@ -207,7 +207,6 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-@Composable
 private fun AppIconSplash() {
     Box(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -252,4 +251,3 @@ private fun NoRootScreen(onRetry: () -> Unit) {
         }
     }
 }
-
