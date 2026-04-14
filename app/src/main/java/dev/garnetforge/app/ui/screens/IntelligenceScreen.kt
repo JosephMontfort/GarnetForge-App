@@ -260,7 +260,7 @@ private fun AppRow(app: AppProfile, presets: List<ProfilePreset>, onClick: () ->
         },
         modifier = Modifier.clickable(onClick = onClick),
         colors = ListItemDefaults.colors(
-            containerColor = if (app.enabled) GarnetDeep.copy(0.08f) else MaterialTheme.colorScheme.background),
+            containerColor = if (app.enabled) MaterialTheme.colorScheme.primaryContainer.copy(alpha=0.15f) else MaterialTheme.colorScheme.background),
     )
 }
 
@@ -667,12 +667,13 @@ private fun PresetEditorSheet(
 // ── Shared composables ────────────────────────────────────────────────
 @Composable
 private fun CoreToggle(core: Int, online: Boolean, forced: Boolean, context: android.content.Context, onToggle: () -> Unit) {
-    val bg = when { forced -> GarnetDeep.copy(0.55f); online -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.surfaceContainerHigh }
-    val tc = when { forced -> Color.White.copy(0.8f); online -> Color.White; else -> MaterialTheme.colorScheme.onSurfaceVariant }
+    // Forced cores use primaryContainer (accent-aware deep color) so it changes with theme
+    val bg = when { forced -> MaterialTheme.colorScheme.primaryContainer; online -> MaterialTheme.colorScheme.primary; else -> MaterialTheme.colorScheme.surfaceContainerHigh }
+    val tc = when { forced -> MaterialTheme.colorScheme.onPrimaryContainer; online -> Color.White; else -> MaterialTheme.colorScheme.onSurfaceVariant }
     Surface(
         onClick = { if (forced) android.widget.Toast.makeText(context, "Core $core must stay online", android.widget.Toast.LENGTH_SHORT).show() else onToggle() },
         shape = RoundedCornerShape(10.dp), color = bg,
-        border = BorderStroke(1.dp, if (forced) GarnetDeep else if (online) MaterialTheme.colorScheme.primary.copy(0.6f) else MaterialTheme.colorScheme.outline),
+        border = BorderStroke(1.dp, if (forced) MaterialTheme.colorScheme.primaryContainer else if (online) MaterialTheme.colorScheme.primary.copy(0.6f) else MaterialTheme.colorScheme.outline),
         modifier = Modifier.size(40.dp), enabled = true
     ) {
         Column(Modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {

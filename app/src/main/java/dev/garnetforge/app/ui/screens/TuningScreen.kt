@@ -9,6 +9,7 @@ package dev.garnetforge.app.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.animateContentSize
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -114,7 +115,20 @@ fun TuningScreen(
                 .fillMaxSize()
                 .blur(backgroundBlur)
         ) {
-            items(SECTIONS, key = { it.id }) { section ->
+            item(span = { GridItemSpan(2) }) {
+            Column(Modifier.padding(top = 4.dp, bottom = 8.dp)) {
+                Text("PERFORMANCE TUNING",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = adaptiveTint,
+                    letterSpacing = 2.sp,
+                    fontWeight = FontWeight.Bold)
+                Text("Every nanosecond counts.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        items(SECTIONS, key = { it.id }) { section ->
                 val isExpanded = activeOverlayIds.contains(section.id)
 
                 Box(
@@ -682,7 +696,7 @@ private fun SectionContent(
             val initRxq = if (liveRxq > 0) liveRxq else config.netRxqueuelen
             var rxq by remember(liveRxq, config.netRxqueuelen) { mutableIntStateOf(initRxq) }
             // Continuous slider — queue len is arbitrary
-            RevertableSlider("TX Queue Length", rxq.toFloat(), 100f, 10000f, 0,
+            RevertableSlider("TX Queue Length", rxq.toFloat(), 100f, 10000f, 99,
                 "$rxq", tBlue, { rxq = it.toInt() },
                 onRevert = { rxq = nodeDefaults.netRxqueuelen; onSet("net_rxqueuelen", nodeDefaults.netRxqueuelen.toString()) },
                 info = "Network interface TX queue depth. Higher = better throughput under load.",
@@ -815,18 +829,20 @@ private fun ChipRowTuning(label: String, opts: List<String>, sel: String, info: 
             }
         }
     }
-    AnimatedVisibility(showInfo, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-        Box(
-            Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (isLight) Color(0xFFf0f4f8) else Color(0xFF1a1a2e))
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text(info, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.animateContentSize()) {
+        AnimatedVisibility(showInfo, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Box(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isLight) Color(0xFFf0f4f8) else Color(0xFF1a1a2e))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(info, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
-    }
-    Spacer(Modifier.height(8.dp))
-    FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
-        opts.forEach { o -> ProfileChip(o, o==sel) { onSel(o) } }
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+            opts.forEach { o -> ProfileChip(o, o==sel) { onSel(o) } }
+        }
     }
 }

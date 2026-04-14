@@ -187,8 +187,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setConfig(key: String, value: String) = viewModelScope.launch {
         _config.value = applyOptimistic(_config.value, key, value)
+        _liveNodes.value = applyLiveOptimistic(_liveNodes.value, key, value)
         launch { writeSysfs(key, value) }
         launch { runCatching { configRepo.setOnly(key, value) } }
+    }
+
+    private fun applyLiveOptimistic(ln: LiveNodeValues, key: String, value: String) = when (key) {
+        "vm_swappiness"             -> ln.copy(vmSwappiness           = value.toIntOrNull() ?: ln.vmSwappiness)
+        "vm_dirty_ratio"            -> ln.copy(vmDirtyRatio           = value.toIntOrNull() ?: ln.vmDirtyRatio)
+        "vm_dirty_background_ratio" -> ln.copy(vmDirtyBackgroundRatio = value.toIntOrNull() ?: ln.vmDirtyBackgroundRatio)
+        "vm_vfs_cache_pressure"     -> ln.copy(vmVfsCachePressure     = value.toIntOrNull() ?: ln.vmVfsCachePressure)
+        "net_rxqueuelen"            -> ln.copy(netRxqueuelen          = value.toIntOrNull() ?: ln.netRxqueuelen)
+        "gpu_pwrlevel"              -> ln.copy(gpuPwrlevel            = value.toIntOrNull() ?: ln.gpuPwrlevel)
+        "gpu_idle_timer"            -> ln.copy(gpuIdleTimer           = value.toIntOrNull() ?: ln.gpuIdleTimer)
+        "thermal_boost"             -> ln.copy(thermalBoost           = value == "1")
+        "read_ahead_kb"             -> ln.copy(readAheadKb            = value.toIntOrNull() ?: ln.readAheadKb)
+        "tcp_algo"                  -> ln.copy(tcpAlgo                = value)
+        else -> ln
     }
 
     private suspend fun writeSysfs(key: String, value: String) = withContext(Dispatchers.IO) {
