@@ -1,6 +1,11 @@
 package dev.garnetforge.app
 
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -42,9 +47,13 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private val notifPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()) { /* result ignored — service notif optional */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestNotificationPermissionIfNeeded()
         setContent {
             val themeMode by vm.themeMode.collectAsState()
             val accentTheme by vm.accentTheme.collectAsState()
@@ -189,6 +198,15 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     }

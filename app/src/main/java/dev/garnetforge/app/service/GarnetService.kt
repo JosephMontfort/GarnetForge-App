@@ -31,7 +31,13 @@ class GarnetService : Service() {
     companion object {
         const val CHANNEL_ID = "garnet_svc"
         const val NOTIF_ID   = 1
-        fun start(ctx: Context) = ctx.startForegroundService(Intent(ctx, GarnetService::class.java))
+        fun start(ctx: Context) {
+            try {
+                ctx.startForegroundService(Intent(ctx, GarnetService::class.java))
+            } catch (e: Exception) {
+                android.util.Log.e("GarnetForge", "startForegroundService failed: ${e.message}")
+            }
+        }
         fun stop(ctx: Context)  = ctx.stopService(Intent(ctx, GarnetService::class.java))
     }
 
