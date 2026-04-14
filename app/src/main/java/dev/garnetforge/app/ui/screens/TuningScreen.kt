@@ -9,7 +9,7 @@ package dev.garnetforge.app.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.animateContentSize
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
