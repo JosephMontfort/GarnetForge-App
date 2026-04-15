@@ -166,59 +166,31 @@ class SysfsRepository(private val context: Context) {
     }
 
     // ── Live stats ────────────────────────────────────────────────────
-    // ── Live stats — node paths resolved from nodes.prop ─────────────
     suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
-        // Read discovered node map once per call (cached in memory by shell)
-        val np = Shell.cmd("cat $NODES 2>/dev/null").exec().out.associate { line ->
-            val eq = line.indexOf('='); if (eq > 0) line.substring(0, eq) to line.substring(eq + 1) else "" to ""
+        fun readLong(path: String): Long =
+            Shell.cmd("cat \"$path\" 2>/dev/null").exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: 0L
+
+        val perCore = (0..7).map { c ->
+            val path = "/sys/devices/system/cpu/cpu$c/cpufreq/scaling_cur_freq"
+            (readLong(path) / 1000L).toInt()
         }
-        fun tzp(key: String, fb: String) = np[key]?.trim()?.takeIf { it.startsWith("/") } ?: fb
-        val cpuTzNode = tzp("thermal_zone_cpu",  tzp("thermal_zone_cpu_fb",  "/sys/class/thermal/thermal_zone67/temp"))
-        val gpuTzNode = tzp("thermal_zone_gpu",  tzp("thermal_zone_gpu_fb",  "/sys/class/thermal/thermal_zone31/temp"))
-        val ddrTzNode = tzp("thermal_zone_ddr",  tzp("thermal_zone_ddr_fb",  "/sys/class/thermal/thermal_zone43/temp"))
-        val battNode  = tzp("battery_temp",      "/sys/class/power_supply/battery/temp")
-        val coreCount = np["cpu_core_count"]?.trim()?.toIntOrNull()?.coerceIn(1, 16) ?: 8
-        // Build per-core freq nodes
-        val coreNodes = (0 until coreCount).map { c ->
-            np["cpu${c}_cur_freq"]?.trim()
-                ?: "/sys/devices/system/cpu/cpu${c}/cpufreq/scaling_cur_freq"
-        }
-        // Cluster cur_freq from policy nodes (policy-level read is more reliable)
-        val litCurNode = CPU0_MAX.replace("scaling_max_freq", "scaling_cur_freq")
-        val bigCurNode = CPU4_MAX.replace("scaling_max_freq", "scaling_cur_freq")
 
-        val perCoreRaw = Shell.cmd(
-            coreNodes.mapIndexed { _, node -> "cat $node 2>/dev/null; printf '|'" }.joinToString("; ")
-        ).exec().out.firstOrNull() ?: ""
+        val h = LocalTime.now().hour
+        val h12 = if (h % 12 == 0) 12 else h % 12
 
-        val clusterRaw = Shell.cmd(
-            "printf '%s|%s|%s|%s|%s|%s|%s|%s' " +
-            ""$(cat $litCurNode 2>/dev/null)" " +
-            ""$(cat $bigCurNode 2>/dev/null)" " +
-            ""$(cat $GPU_CUR 2>/dev/null)" " +
-            ""$(cat $cpuTzNode 2>/dev/null)" " +
-            ""$(cat $gpuTzNode 2>/dev/null)" " +
-            ""$(cat $ddrTzNode 2>/dev/null)" " +
-            ""$(cat $battNode 2>/dev/null)" " +
-            ""$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null)""
-        ).exec().out.firstOrNull() ?: ""
-
-        val cp = clusterRaw.split("|")
-        fun ck(i: Int) = cp.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
-        val perCore = perCoreRaw.split("|").take(coreCount)
-            .map { it.trim().toLongOrNull()?.div(1000)?.toInt() ?: 0 }
-            .let { list -> if (list.size < 8) list + List(8 - list.size) { 0 } else list }
-        val h = LocalTime.now().hour; val h12 = if (h % 12 == 0) 12 else h % 12
         LiveStats(
-            cpu0FreqMhz    = (ck(0) / 1000).toInt(),
-            cpu4FreqMhz    = (ck(1) / 1000).toInt(),
-            gpuFreqMhz     = (ck(2) / 1_000_000).toInt(),
-            cpuTempC       = (ck(3) / 1000).toInt(),
-            gpuTempC       = (ck(4) / 1000).toInt(),
-            ddrTempC       = (ck(5) / 1000).toInt(),
-            battTempC      = (ck(6) / 10).toInt(),
-            freeRamMb      = (ck(7) / 1024).toInt(),
-            timeStr        = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} ${if(h<12)"AM" else "PM"}",
+            cpu0FreqMhz = (readLong(CPU0_MAX.replace("scaling_max_freq", "scaling_cur_freq")) / 1000L).toInt(),
+            cpu4FreqMhz = (readLong(CPU4_MAX.replace("scaling_max_freq", "scaling_cur_freq")) / 1000L).toInt(),
+            gpuFreqMhz = (readLong(GPU_CUR) / 1_000_000L).toInt(),
+            cpuTempC = (readLong("/sys/class/thermal/thermal_zone67/temp") / 1000L).toInt(),
+            gpuTempC = (readLong("/sys/class/thermal/thermal_zone31/temp") / 1000L).toInt(),
+            ddrTempC = (readLong("/sys/class/thermal/thermal_zone43/temp") / 1000L).toInt(),
+            battTempC = (readLong("/sys/class/power_supply/battery/temp") / 10L).toInt(),
+            freeRamMb = (
+                Shell.cmd("awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null")
+                    .exec().out.firstOrNull()?.trim()?.toLongOrNull()?.div(1024L) ?: 0L
+            ).toInt(),
+            timeStr = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} ${if (h < 12) "AM" else "PM"}",
             perCoreFreqMhz = perCore,
         )
     }
