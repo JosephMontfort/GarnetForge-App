@@ -17,26 +17,76 @@ class SysfsRepository(private val context: Context) {
         const val INSTALL_DIR   = "/data/data/dev.garnetforge.app/files/garnetforge"
         const val THERMAL_APPS  = "$INSTALL_DIR/thermal_apps.prop"
         const val APP_PROFILES  = "$INSTALL_DIR/app_profiles.prop"
-        const val PRESETS      = "$INSTALL_DIR/profile_presets.prop"
-        const val SCONFIG       = "/sys/class/thermal/thermal_message/sconfig"
-        const val CPU0_MAX      = "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
-        const val CPU0_MIN      = "/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq"
-        const val CPU0_GOV      = "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor"
-        const val CPU4_MAX      = "/sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq"
-        const val CPU4_MIN      = "/sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq"
-        const val CPU4_GOV      = "/sys/devices/system/cpu/cpufreq/policy4/scaling_governor"
-        const val CPU0_INFO_MIN = "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_min_freq"
-        const val CPU4_INFO_MIN = "/sys/devices/system/cpu/cpufreq/policy4/cpuinfo_min_freq"
-        const val GPU_MAX       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/max_freq"
-        const val GPU_MIN       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/min_freq"
-        const val GPU_CUR       = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/cur_freq"
-        const val SWAPPINESS    = "/proc/sys/vm/swappiness"
-        const val GPU_PWRLEVEL  = "/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel"
-        const val GPU_IDLE_TIMER= "/sys/class/kgsl/kgsl-3d0/idle_timer"
-        const val THERMAL_BOOST = "/sys/class/thermal/thermal_message/boost"
-        const val DEFAULTS      = "$INSTALL_DIR/defaults.prop"
-        const val TCP_ALGO      = "/proc/sys/net/ipv4/tcp_congestion_control"
+        const val PRESETS       = "$INSTALL_DIR/profile_presets.prop"
         const val NODES         = "$INSTALL_DIR/nodes.prop"
+        const val DEFAULTS      = "$INSTALL_DIR/defaults.prop"
+        const val SCONFIG       = "/sys/class/thermal/thermal_message/sconfig"
+        const val SWAPPINESS    = "/proc/sys/vm/swappiness"
+        const val TCP_ALGO      = "/proc/sys/net/ipv4/tcp_congestion_control"
+
+        // Fallback constants — used when nodes.prop hasn't been generated yet
+        const val CPU0_MAX_FB   = "/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq"
+        const val CPU0_MIN_FB   = "/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq"
+        const val CPU0_GOV_FB   = "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor"
+        const val CPU4_MAX_FB   = "/sys/devices/system/cpu/cpufreq/policy4/scaling_max_freq"
+        const val CPU4_MIN_FB   = "/sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq"
+        const val CPU4_GOV_FB   = "/sys/devices/system/cpu/cpufreq/policy4/scaling_governor"
+        const val GPU_MAX_FB    = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/max_freq"
+        const val GPU_MIN_FB    = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/min_freq"
+        const val GPU_CUR_FB    = "/sys/class/devfreq/3d00000.qcom,kgsl-3d0/cur_freq"
+        const val GPU_PL_FB     = "/sys/class/kgsl/kgsl-3d0/thermal_pwrlevel"
+        const val GPU_IT_FB     = "/sys/class/kgsl/kgsl-3d0/idle_timer"
+        const val THERMAL_BOOST_FB = "/sys/class/thermal/thermal_message/boost"
+
+        // Dynamic — populated from nodes.prop at runtime
+        var CPU0_MAX   = CPU0_MAX_FB; var CPU0_MIN = CPU0_MIN_FB; var CPU0_GOV = CPU0_GOV_FB
+        var CPU4_MAX   = CPU4_MAX_FB; var CPU4_MIN = CPU4_MIN_FB; var CPU4_GOV = CPU4_GOV_FB
+        var CPU0_INFO_MIN = "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_min_freq"
+        var CPU4_INFO_MIN = "/sys/devices/system/cpu/cpufreq/policy4/cpuinfo_min_freq"
+        var GPU_MAX    = GPU_MAX_FB; var GPU_MIN = GPU_MIN_FB; var GPU_CUR = GPU_CUR_FB
+        var GPU_PWRLEVEL = GPU_PL_FB; var GPU_IDLE_TIMER = GPU_IT_FB
+        var THERMAL_BOOST = THERMAL_BOOST_FB
+    }
+
+    /** Load discovered node paths from nodes.prop into companion vars. Call after detection. */
+    suspend fun loadNodePaths(): Unit = withContext(Dispatchers.IO) {
+        val np = Shell.cmd("cat $NODES 2>/dev/null").exec().out.associate { line ->
+            val eq = line.indexOf('='); if (eq > 0) line.substring(0, eq) to line.substring(eq + 1) else "" to ""
+        }
+        fun node(key: String, fallback: String): String {
+            val path = np[key]?.trim() ?: return fallback
+            // The value is a path (e.g. /sys/...). Verify it exists if we can check.
+            return if (path.startsWith("/")) path else fallback
+        }
+        val lp  = np["cpu_little_policy"]?.trim() ?: "policy0"
+        val bp  = np["cpu_big_policy"]?.trim() ?: "policy4"
+        val bpol= np["cpu_prime_policy"]?.trim() ?: bp   // prime = big if no prime
+
+        CPU0_MIN  = "/sys/devices/system/cpu/cpufreq/$lp/scaling_min_freq"
+        CPU0_MAX  = "/sys/devices/system/cpu/cpufreq/$lp/scaling_max_freq"
+        CPU0_GOV  = "/sys/devices/system/cpu/cpufreq/$lp/scaling_governor"
+        CPU0_INFO_MIN = "/sys/devices/system/cpu/cpufreq/$lp/cpuinfo_min_freq"
+        CPU4_MIN  = "/sys/devices/system/cpu/cpufreq/$bpol/scaling_min_freq"
+        CPU4_MAX  = "/sys/devices/system/cpu/cpufreq/$bpol/scaling_max_freq"
+        CPU4_GOV  = "/sys/devices/system/cpu/cpufreq/$bpol/scaling_governor"
+        CPU4_INFO_MIN = "/sys/devices/system/cpu/cpufreq/$bpol/cpuinfo_min_freq"
+
+        val gpuMax = node("gpu_max_node", GPU_MAX_FB)
+        val gpuMin = node("gpu_min_node", GPU_MIN_FB)
+        val gpuCur = node("gpu_cur_freq", GPU_CUR_FB)
+        GPU_MAX = gpuMax; GPU_MIN = gpuMin; GPU_CUR = gpuCur
+
+        val pl = node("gpu_thermal_pwrlevel", node("gpu_devfreq_governor", GPU_PL_FB))
+        val actualPl = np.keys.firstOrNull { it.startsWith("gpu_") && it.contains("pwrlevel") }?.let { np[it]?.trim() } ?: GPU_PL_FB
+        GPU_PWRLEVEL = actualPl
+
+        val it = node("gpu_idle_timer", GPU_IT_FB)
+        GPU_IDLE_TIMER = it
+
+        val boost = node("thermal_msg_boost", THERMAL_BOOST_FB)
+        THERMAL_BOOST = boost
+
+        android.util.Log.i("GarnetForge", "Nodes loaded: little=$lp big=$bpol gpu=$gpuCur")
     }
 
     // ── Available frequencies from nodes.prop ─────────────────────────
@@ -116,39 +166,58 @@ class SysfsRepository(private val context: Context) {
     }
 
     // ── Live stats ────────────────────────────────────────────────────
+    // ── Live stats — node paths resolved from nodes.prop ─────────────
     suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
-        val raw = Shell.cmd(
-            "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' " +
-            "\"\$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpufreq/policy4/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat $GPU_CUR 2>/dev/null)\" " +
-            "\"\$(cat /sys/class/thermal/thermal_zone67/temp 2>/dev/null)\" " +
-            "\"\$(cat /sys/class/thermal/thermal_zone31/temp 2>/dev/null)\" " +
-            "\"\$(cat /sys/class/thermal/thermal_zone43/temp 2>/dev/null)\" " +
-            "\"\$(cat /sys/class/power_supply/battery/temp 2>/dev/null)\" " +
-            "\"\$(awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu2/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu3/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu4/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu5/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-            "\"\$(cat /sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq 2>/dev/null)\""
+        // Read discovered node map once per call (cached in memory by shell)
+        val np = Shell.cmd("cat $NODES 2>/dev/null").exec().out.associate { line ->
+            val eq = line.indexOf('='); if (eq > 0) line.substring(0, eq) to line.substring(eq + 1) else "" to ""
+        }
+        fun tzp(key: String, fb: String) = np[key]?.trim()?.takeIf { it.startsWith("/") } ?: fb
+        val cpuTzNode = tzp("thermal_zone_cpu",  tzp("thermal_zone_cpu_fb",  "/sys/class/thermal/thermal_zone67/temp"))
+        val gpuTzNode = tzp("thermal_zone_gpu",  tzp("thermal_zone_gpu_fb",  "/sys/class/thermal/thermal_zone31/temp"))
+        val ddrTzNode = tzp("thermal_zone_ddr",  tzp("thermal_zone_ddr_fb",  "/sys/class/thermal/thermal_zone43/temp"))
+        val battNode  = tzp("battery_temp",      "/sys/class/power_supply/battery/temp")
+        val coreCount = np["cpu_core_count"]?.trim()?.toIntOrNull()?.coerceIn(1, 16) ?: 8
+        // Build per-core freq nodes
+        val coreNodes = (0 until coreCount).map { c ->
+            np["cpu${c}_cur_freq"]?.trim()
+                ?: "/sys/devices/system/cpu/cpu${c}/cpufreq/scaling_cur_freq"
+        }
+        // Cluster cur_freq from policy nodes (policy-level read is more reliable)
+        val litCurNode = CPU0_MAX.replace("scaling_max_freq", "scaling_cur_freq")
+        val bigCurNode = CPU4_MAX.replace("scaling_max_freq", "scaling_cur_freq")
+
+        val perCoreRaw = Shell.cmd(
+            coreNodes.mapIndexed { _, node -> "cat $node 2>/dev/null; printf '|'" }.joinToString("; ")
         ).exec().out.firstOrNull() ?: ""
-        val p = raw.split("|")
-        fun lk(i: Int) = p.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
-        val perCore = (8..15).map { i -> (lk(i) / 1000).toInt() }
+
+        val clusterRaw = Shell.cmd(
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s' " +
+            ""$(cat $litCurNode 2>/dev/null)" " +
+            ""$(cat $bigCurNode 2>/dev/null)" " +
+            ""$(cat $GPU_CUR 2>/dev/null)" " +
+            ""$(cat $cpuTzNode 2>/dev/null)" " +
+            ""$(cat $gpuTzNode 2>/dev/null)" " +
+            ""$(cat $ddrTzNode 2>/dev/null)" " +
+            ""$(cat $battNode 2>/dev/null)" " +
+            ""$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null)""
+        ).exec().out.firstOrNull() ?: ""
+
+        val cp = clusterRaw.split("|")
+        fun ck(i: Int) = cp.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
+        val perCore = perCoreRaw.split("|").take(coreCount)
+            .map { it.trim().toLongOrNull()?.div(1000)?.toInt() ?: 0 }
+            .let { list -> if (list.size < 8) list + List(8 - list.size) { 0 } else list }
         val h = LocalTime.now().hour; val h12 = if (h % 12 == 0) 12 else h % 12
         LiveStats(
-            cpu0FreqMhz    = (lk(0) / 1000).toInt(),
-            cpu4FreqMhz    = (lk(1) / 1000).toInt(),
-            gpuFreqMhz     = (lk(2) / 1_000_000).toInt(),
-            cpuTempC       = (lk(3) / 1000).toInt(),
-            gpuTempC       = (lk(4) / 1000).toInt(),
-            ddrTempC       = (lk(5) / 1000).toInt(),
-            battTempC      = (lk(6) / 10).toInt(),
-            freeRamMb      = (lk(7) / 1024).toInt(),
+            cpu0FreqMhz    = (ck(0) / 1000).toInt(),
+            cpu4FreqMhz    = (ck(1) / 1000).toInt(),
+            gpuFreqMhz     = (ck(2) / 1_000_000).toInt(),
+            cpuTempC       = (ck(3) / 1000).toInt(),
+            gpuTempC       = (ck(4) / 1000).toInt(),
+            ddrTempC       = (ck(5) / 1000).toInt(),
+            battTempC      = (ck(6) / 10).toInt(),
+            freeRamMb      = (ck(7) / 1024).toInt(),
             timeStr        = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} ${if(h<12)"AM" else "PM"}",
             perCoreFreqMhz = perCore,
         )

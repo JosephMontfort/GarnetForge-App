@@ -44,6 +44,8 @@ object ScriptManager {
 
                 // Always re-run detect_nodes (kernel may change)
                 Shell.cmd("sh $INSTALL_DIR/detect_nodes.sh").exec()
+                // Signal that node paths need reload in SysfsRepository
+                android.util.Log.i("GarnetForge", "Node detection complete")
 
                 // detect_defaults only on first install or if defaults.prop missing
                 if (!defaultsExist || needsUpdate) {

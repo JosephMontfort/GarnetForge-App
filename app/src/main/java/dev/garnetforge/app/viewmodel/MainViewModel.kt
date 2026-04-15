@@ -102,6 +102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         loadDeviceInfo()
         loadAvailableFreqs()
         loadNodeDefaults()
+        viewModelScope.launch { runCatching { sysfsRepo.loadNodePaths() } }
         refreshLiveNodes()
         startPolling()
     }
