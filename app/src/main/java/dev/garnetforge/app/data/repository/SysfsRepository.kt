@@ -165,35 +165,45 @@ class SysfsRepository(private val context: Context) {
         )
     }
 
-    // ── Live stats ────────────────────────────────────────────────────
-    suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
-        fun readLong(path: String): Long =
-            Shell.cmd("cat \"$path\" 2>/dev/null").exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: 0L
-
-        val perCore = (0..7).map { c ->
-            val path = "/sys/devices/system/cpu/cpu$c/cpufreq/scaling_cur_freq"
-            (readLong(path) / 1000L).toInt()
-        }
-
-        val h = LocalTime.now().hour
-        val h12 = if (h % 12 == 0) 12 else h % 12
-
-        LiveStats(
-            cpu0FreqMhz = (readLong(CPU0_MAX.replace("scaling_max_freq", "scaling_cur_freq")) / 1000L).toInt(),
-            cpu4FreqMhz = (readLong(CPU4_MAX.replace("scaling_max_freq", "scaling_cur_freq")) / 1000L).toInt(),
-            gpuFreqMhz = (readLong(GPU_CUR) / 1_000_000L).toInt(),
-            cpuTempC = (readLong("/sys/class/thermal/thermal_zone67/temp") / 1000L).toInt(),
-            gpuTempC = (readLong("/sys/class/thermal/thermal_zone31/temp") / 1000L).toInt(),
-            ddrTempC = (readLong("/sys/class/thermal/thermal_zone43/temp") / 1000L).toInt(),
-            battTempC = (readLong("/sys/class/power_supply/battery/temp") / 10L).toInt(),
-            freeRamMb = (
-                Shell.cmd("awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null")
-                    .exec().out.firstOrNull()?.trim()?.toLongOrNull()?.div(1024L) ?: 0L
-            ).toInt(),
-            timeStr = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} ${if (h < 12) "AM" else "PM"}",
-            perCoreFreqMhz = perCore,
-        )
-    }
+// ── Live stats ────────────────────────────────────────────────────
+suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
+    val raw = Shell.cmd(
+        "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' " +
+        "\"\$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpufreq/policy4/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat $GPU_CUR 2>/dev/null)\" " +
+        "\"\$(cat /sys/class/thermal/thermal_zone67/temp 2>/dev/null)\" " +
+        "\"\$(cat /sys/class/thermal/thermal_zone31/temp 2>/dev/null)\" " +
+        "\"\$(cat /sys/class/thermal/thermal_zone43/temp 2>/dev/null)\" " +
+        "\"\$(cat /sys/class/power_supply/battery/temp 2>/dev/null)\" " +
+        "\"\$(awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu2/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu3/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu4/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu5/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
+        "\"\$(cat /sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq 2>/dev/null)\""
+    ).exec().out.firstOrNull() ?: ""
+    val p = raw.split("|")
+    fun lk(i: Int) = p.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
+    val perCore = (8..15).map { i -> (lk(i) / 1000).toInt() }
+    val h = LocalTime.now().hour
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    LiveStats(
+        cpu0FreqMhz = (lk(0) / 1000).toInt(),
+        cpu4FreqMhz = (lk(1) / 1000).toInt(),
+        gpuFreqMhz = (lk(2) / 1_000_000).toInt(),
+        cpuTempC = (lk(3) / 1000).toInt(),
+        gpuTempC = (lk(4) / 1000).toInt(),
+        ddrTempC = (lk(5) / 1000).toInt(),
+        battTempC = (lk(6) / 10).toInt(),
+        freeRamMb = (lk(7) / 1024).toInt(),
+        timeStr = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} ${if (h < 12) "AM" else "PM"}",
+        perCoreFreqMhz = perCore,
+    )
+}
 
     suspend fun getCurrentSconfig(): String = withContext(Dispatchers.IO) {
         Shell.cmd("cat $SCONFIG 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "20"
