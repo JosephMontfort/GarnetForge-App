@@ -96,3 +96,9 @@ fi
 wr "$(get thermal_profile)" /sys/class/thermal/thermal_message/sconfig
 
 log "APPLY done"
+
+# ── Apply on boot check ──────────────────────────────────────────────
+APPLY_ON_BOOT=$(get "apply_on_boot")
+[ "$APPLY_ON_BOOT" = "0" ] && log "apply_on_boot=0 — skipping apply" && exit 0
+
+log "Applying configuration..."

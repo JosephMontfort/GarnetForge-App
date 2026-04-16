@@ -392,6 +392,60 @@ suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
         ).exec()
     }
 
+    // ── Entropy boost ─────────────────────────────────────────────────
+    suspend fun boostEntropy(): Unit = withContext(Dispatchers.IO) {
+        // Write random data to /dev/urandom (stimulates entropy pool),
+        // then lower wakeup threshold so reads get data sooner
+        Shell.cmd(
+            "cat /dev/hwrng > /dev/urandom 2>/dev/null & " +
+            "[ -f /proc/sys/kernel/random/write_wakeup_threshold ] && " +
+            "echo 256 > /proc/sys/kernel/random/write_wakeup_threshold 2>/dev/null; " +
+            "cat /dev/urandom | head -c 512 > /dev/null 2>/dev/null"
+        ).exec()
+    }
+
+    suspend fun getEntropyAvailable(): Int = withContext(Dispatchers.IO) {
+        Shell.cmd("cat /proc/sys/kernel/random/entropy_avail 2>/dev/null")
+            .exec().out.firstOrNull()?.trim()?.toIntOrNull() ?: -1
+    }
+
+    // ── Diagnostic report ─────────────────────────────────────────────
+    suspend fun runDiagnostic(): String = withContext(Dispatchers.IO) {
+        val script = "$INSTALL_DIR/diagnostic.sh"
+        val out    = "$INSTALL_DIR/diagnostic_report.txt"
+        Shell.cmd("[ -f $script ] && sh $script").exec()
+        Shell.cmd("cat $out 2>/dev/null").exec().out.joinToString("
+")
+    }
+
+    fun getDiagnosticFilePath(): String = "$INSTALL_DIR/diagnostic_report.txt"
+
+    // ── Network speed test (using shell dd + /dev/urandom for throughput) ─
+    suspend fun runSpeedTest(): Pair<Float, Float> = withContext(Dispatchers.IO) {
+        // Download test: time downloading from a public test endpoint
+        val dlRaw = Shell.cmd(
+            "START=6262764059; " +
+            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
+            "  https://speed.cloudflare.com/__down?bytes=10000000 2>/dev/null; " +
+            "END=6262764063; " +
+            "printf '%d' " ""
+        ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
+        val dlMbps = if (dlRaw > 0) (10_000_000f * 8 / 1_000_000f) / (dlRaw / 1000f) else -1f
+
+        // Upload test: time uploading 2MB of zeros
+        val ulRaw = Shell.cmd(
+            "START=6262764067; " +
+            "dd if=/dev/urandom bs=1024 count=2048 2>/dev/null | " +
+            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
+            "  -X POST -d @- https://speed.cloudflare.com/__up 2>/dev/null; " +
+            "END=6262764072; " +
+            "printf '%d' " ""
+        ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
+        val ulMbps = if (ulRaw > 0) (2_000_000f * 8 / 1_000_000f) / (ulRaw / 1000f) else -1f
+
+        Pair(dlMbps, ulMbps)
+    }
+
     // ── Installed app list ────────────────────────────────────────────
     suspend fun getInstalledApps(): List<ThermalApp> = withContext(Dispatchers.Default) {
         val pm = context.packageManager

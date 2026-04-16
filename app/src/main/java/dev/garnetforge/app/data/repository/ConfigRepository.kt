@@ -18,6 +18,8 @@ class ConfigRepository {
         fun s(k: String) = raw[k] ?: ""
         fun i(k: String, d: Int) = raw[k]?.toIntOrNull() ?: d
         fun b(k: String) = raw[k] == "1"
+        fun b(k: String, d: Boolean) = if (raw.containsKey(k)) raw[k] == "1" else d
+        fun v(k: String, d: String) = raw[k] ?: d
         GarnetConfig(
             cpuPolicy0Governor     = s("cpu_policy0_governor").ifEmpty { "walt" },
             cpuPolicy0Min          = i("cpu_policy0_min",  691200),
@@ -42,6 +44,15 @@ class ConfigRepository {
             tcpAlgo                = s("tcp_algo").ifEmpty { "cubic" },
             netRxqueuelen          = i("net_rxqueuelen", 1000),
             nightMode              = b("night_mode"),
+            applyOnBoot            = b("apply_on_boot", true),
+            screenOffLittleCoresOff= i("screen_off_little_cores_off", 2),
+            screenOffBigCoresOff   = i("screen_off_big_cores_off", 3),
+            screenOffGpuMaxMhz     = i("screen_off_gpu_max_mhz", 0),
+            screenOffGovLittle     = v("screen_off_gov_little", ""),
+            screenOffGovBig        = v("screen_off_gov_big", ""),
+            screenOffTimeEnabled   = b("screen_off_time_enabled"),
+            screenOffTimeStart     = i("screen_off_time_start", 23),
+            screenOffTimeEnd       = i("screen_off_time_end", 7),
             thermalControl         = b("thermal_control"),
             perAppThermal          = b("per_app_thermal"),
         )

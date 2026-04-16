@@ -26,6 +26,17 @@ data class GarnetConfig(
     val nightMode: Boolean = false,
     val thermalControl: Boolean = false,
     val perAppThermal: Boolean = false,
+    val applyOnBoot: Boolean = true,
+    // Screen-off core masking customisation
+    val screenOffLittleCoresOff: Int = 2,   // how many little cores (1-3) to offline
+    val screenOffBigCoresOff: Int = 3,      // how many big cores (5-7) to offline
+    val screenOffGpuMaxMhz: Int = 0,        // 0 = no change
+    val screenOffGovLittle: String = "",    // empty = no change
+    val screenOffGovBig: String = "",
+    // Screen-off time window — only apply masking during this period
+    val screenOffTimeEnabled: Boolean = false,
+    val screenOffTimeStart: Int = 23,       // hour 0-23
+    val screenOffTimeEnd: Int = 7,          // hour 0-23 (can wrap midnight)
 )
 
 data class LiveStats(

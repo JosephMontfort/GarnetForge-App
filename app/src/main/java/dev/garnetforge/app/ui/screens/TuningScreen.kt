@@ -76,6 +76,9 @@ fun TuningScreen(
     availFreqsGpu: List<Int>,
     liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
     nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
+    speedTestState: dev.garnetforge.app.SpeedTestState,
+    entropyLevel: Int,
+    onRunSpeedTest: () -> Unit = {},
     blurEnabled: Boolean,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
@@ -195,8 +198,11 @@ fun TuningScreen(
                         availFreqsL = availFreqsL,
                         availFreqsB = availFreqsB,
                         availFreqsGpu = availFreqsGpu,
-                        liveNodes   = liveNodes,
-                        nodeDefaults= nodeDefaults,
+                        liveNodes    = liveNodes,
+                        nodeDefaults = nodeDefaults,
+                        speedTestState  = speedTestState,
+                        entropyLevel    = entropyLevel,
+                        onRunSpeedTest  = onRunSpeedTest,
                         onSet       = onSet,
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
@@ -223,6 +229,9 @@ private fun HeroOverlay(
     availFreqsGpu: List<Int>,
     liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
     nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
+    speedTestState: dev.garnetforge.app.SpeedTestState,
+    entropyLevel: Int,
+    onRunSpeedTest: () -> Unit,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
     onToggleCore: (Int) -> Unit,
@@ -331,7 +340,7 @@ private fun HeroOverlay(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, onSet, onProfileSelected, onToggleCore)
+                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, onSet, onProfileSelected, onToggleCore)
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -486,6 +495,9 @@ private fun SectionContent(
     availFreqsL: List<Int>, availFreqsB: List<Int>, availFreqsGpu: List<Int>,
     liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
     nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
+    speedTestState: dev.garnetforge.app.SpeedTestState,
+    entropyLevel: Int,
+    onRunSpeedTest: () -> Unit,
     onSet: (String,String)->Unit,
     onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
 ) {
@@ -701,8 +713,114 @@ private fun SectionContent(
                 onRevert = { rxq = nodeDefaults.netRxqueuelen; onSet("net_rxqueuelen", nodeDefaults.netRxqueuelen.toString()) },
                 info = "Network interface TX queue depth. Higher = better throughput under load.",
             ) { onSet("net_rxqueuelen", rxq.toString()) }
+            Spacer(Modifier.height(12.dp))
+            NetworkSpeedTestPanel(speedTestState, onSet)
+            val isSpeedRunning = speedTestState is dev.garnetforge.app.SpeedTestState.Running
+            Button(onClick = onRunSpeedTest,
+                enabled = !isSpeedRunning,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = tBlue)) {
+                if (isSpeedRunning) {
+                    CircularProgressIndicator(Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(if (isSpeedRunning) "Testing…" else "Run Speed Test", color = Color.White)
+            }
         }
     }
+}
+
+
+// ── Network Speed Test Panel ──────────────────────────────────────────
+@Composable
+private fun NetworkSpeedTestPanel(
+    state: dev.garnetforge.app.SpeedTestState,
+    @Suppress("UNUSED_PARAMETER") onSet: (String, String) -> Unit,
+) {
+    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+    val tBlue   = if (isLight) Color(0xFF0288D1) else ColorBlue
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs   = remember { context.getSharedPreferences("garnet_prefs", 0) }
+    var showWidgetPrompt by remember { mutableStateOf(false) }
+
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.5f))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Text("Speed Test", style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold, color = tBlue)
+        }
+        when (state) {
+            is dev.garnetforge.app.SpeedTestState.Idle ->
+                Text("Tap 'Run Speed Test' to test via Cloudflare.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            is dev.garnetforge.app.SpeedTestState.Running ->
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(Modifier.size(16.dp), color = tBlue, strokeWidth = 2.dp)
+                    Text("Testing… (~15s)", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            is dev.garnetforge.app.SpeedTestState.Done -> {
+                Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
+                    SpeedReadout("Download", state.downloadMbps, tBlue, Modifier.weight(1f))
+                    SpeedReadout("Upload",   state.uploadMbps,   tBlue, Modifier.weight(1f))
+                }
+                LaunchedEffect(state) {
+                    val shown = prefs.getBoolean("widget_prompt_shown", false)
+                    if (!shown) { showWidgetPrompt = true; prefs.edit().putBoolean("widget_prompt_shown", true).apply() }
+                }
+            }
+            is dev.garnetforge.app.SpeedTestState.Error ->
+                Text("Error: ${state.msg}", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
+        }
+        if (showWidgetPrompt) WidgetPrompt(context) { showWidgetPrompt = false }
+    }
+}
+
+@Composable
+private fun SpeedReadout(label: String, mbps: Float, color: Color, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(if (mbps < 0) "--" else "%.1f".format(mbps),
+            style = MaterialTheme.typography.titleLarge, color = color, fontWeight = FontWeight.ExtraBold)
+        Text("Mbps", style = MaterialTheme.typography.labelSmall, color = color.copy(0.7f))
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun WidgetPrompt(context: android.content.Context, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Widgets, null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text("Add Speed Widget?") },
+        text = { Text("Add the GarnetForge speed widget to your home screen for quick network stats.") },
+        confirmButton = {
+            TextButton(onClick = {
+                try {
+                    val mgr = android.appwidget.AppWidgetManager.getInstance(context)
+                    val provider = android.content.ComponentName(context, dev.garnetforge.app.ui.widget.SpeedWidget::class.java)
+                    if (mgr.isRequestPinAppWidgetSupported) {
+                        mgr.requestPinAppWidget(provider, null, null)
+                    } else {
+                        val i = android.content.Intent(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_PICK).apply {
+                            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(i)
+                    }
+                } catch (e: Exception) { android.util.Log.e("GarnetForge", "Widget: ${e.message}") }
+                onDismiss()
+            }) { Text("Add Widget") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Not Now") } }
+    )
 }
 
 // ── Live per-core frequency bars ─────────────────────────────────────

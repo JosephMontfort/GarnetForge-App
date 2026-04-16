@@ -17,6 +17,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
 import dev.garnetforge.app.data.model.DeviceInfo
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
@@ -27,9 +32,11 @@ fun SettingsScreen(
     themeMode: Int,
     accentTheme: Int,
     blurEnabled: Boolean,
+    diagnosticState: dev.garnetforge.app.DiagnosticState,
     onTheme: (Int) -> Unit,
     onAccent: (Int) -> Unit,
     onBlurToggle: (Boolean) -> Unit,
+    onRunDiagnostic: () -> Unit,
     onTelegram: () -> Unit,
 ) {
     var aboutExpanded by remember { mutableStateOf(false) }
@@ -103,6 +110,36 @@ fun SettingsScreen(
                     Text("montfort_1607", style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
+                    // Diagnostic Report button
+                    val context = LocalContext.current
+                    DiagnosticButton(diagnosticState, onRunDiagnostic) { filePath ->
+                        // Share the report file via Intent
+                        try {
+                            val file = java.io.File(filePath)
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context, context.packageName + ".provider", file)
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                putExtra(Intent.EXTRA_SUBJECT, "GarnetForge Diagnostic Report")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            // Open Telegram directly if installed, else chooser
+                            val telegramPkg = "org.telegram.messenger"
+                            val pm = context.packageManager
+                            val telegramInstalled = try { pm.getPackageInfo(telegramPkg, 0); true } catch(e: Exception) { false }
+                            if (telegramInstalled) {
+                                shareIntent.setPackage(telegramPkg)
+                                context.startActivity(shareIntent)
+                            } else {
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Diagnostic Report"))
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("GarnetForge", "Share failed: ${e.message}")
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+
                     Row(Modifier.clip(RoundedCornerShape(10.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable(onClick = onTelegram).padding(horizontal = 12.dp, vertical = 8.dp),
@@ -143,5 +180,55 @@ private fun AccentSwatch(palette: AccentPalette, selected: Boolean, onClick: () 
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.widthIn(max = 200.dp))
+    }
+}
+
+@Composable
+private fun DiagnosticButton(
+    state: dev.garnetforge.app.DiagnosticState,
+    onRun: () -> Unit,
+    onShare: (String) -> Unit,
+) {
+    val isRunning = state is dev.garnetforge.app.DiagnosticState.Running
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(enabled = !isRunning) { if (state is dev.garnetforge.app.DiagnosticState.Done) onShare(state.filePath) else onRun() }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            Arrangement.SpaceBetween, Alignment.CenterVertically
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (isRunning) {
+                    CircularProgressIndicator(Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.BugReport, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+                Column {
+                    Text(
+                        when (state) {
+                            is dev.garnetforge.app.DiagnosticState.Idle    -> "Generate Diagnostic Report"
+                            is dev.garnetforge.app.DiagnosticState.Running -> "Collecting diagnostics…"
+                            is dev.garnetforge.app.DiagnosticState.Done    -> "Report ready — tap to share"
+                            is dev.garnetforge.app.DiagnosticState.Error   -> "Report failed — retry"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text("Generates full system log and shares to Telegram",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (state is dev.garnetforge.app.DiagnosticState.Done) {
+                Icon(Icons.Default.Share, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            }
+        }
+        if (state is dev.garnetforge.app.DiagnosticState.Error) {
+            Text("Error: ${state.msg}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+        }
     }
 }

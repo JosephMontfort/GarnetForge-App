@@ -108,18 +108,75 @@ class GarnetService : Service() {
         super.onDestroy()
     }
 
+    /** Returns true if current time falls within [start, end) — handles midnight wrap. */
+    private fun isInTimeWindow(startH: Int, endH: Int): Boolean {
+        val h = java.time.LocalTime.now().hour
+        return if (startH <= endH) h in startH until endH
+               else h >= startH || h < endH   // wraps midnight
+    }
+
+    // Rotation counter for core offing — persisted across screen on/off cycles
+    @Volatile private var coreRotation = 0
+
     private suspend fun onScreenOff() {
         pollJob?.cancel()
         restoreIfNeeded()
         lastPkg = ""; prevSaved = false; prevSnapshot = null
         if (!cfg.nightMode) return
-        Shell.cmd("for c in 2 3 5 6 7; do echo 0 > /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null; done").exec()
+
+        // Optional time window: only apply masking during the configured period
+        if (cfg.screenOffTimeEnabled && !isInTimeWindow(cfg.screenOffTimeStart, cfg.screenOffTimeEnd)) {
+            android.util.Log.d("GarnetForge", "Screen-off save skipped: outside time window")
+            return
+        }
+
+        // Configurable core masking with rotation to prevent wear on a single core
+        val littleOff = cfg.screenOffLittleCoresOff.coerceIn(0, 3)  // 1-3 offlineable
+        val bigOff    = cfg.screenOffBigCoresOff.coerceIn(0, 3)     // 5-7 offlineable
+        val cmds = mutableListOf<String>()
+
+        // Little cluster: cores 1,2,3 — rotate which ones get offlined
+        if (littleOff > 0) {
+            val candidates = listOf(1, 2, 3)
+            val rotated = (candidates.drop(coreRotation % candidates.size) + candidates.take(coreRotation % candidates.size))
+            val toOff = rotated.take(littleOff)
+            val toOn  = candidates - toOff.toSet()
+            toOff.forEach { cmds.add("echo 0 > /sys/devices/system/cpu/cpu${it}/online 2>/dev/null") }
+            toOn.forEach  { cmds.add("echo 1 > /sys/devices/system/cpu/cpu${it}/online 2>/dev/null") }
+        }
+        // Big cluster: cores 5,6,7 — rotate independently
+        if (bigOff > 0) {
+            val bigCandidates = listOf(5, 6, 7)
+            val rotBig = (bigCandidates.drop(coreRotation % bigCandidates.size) + bigCandidates.take(coreRotation % bigCandidates.size))
+            val toOffB = rotBig.take(bigOff)
+            val toOnB  = bigCandidates - toOffB.toSet()
+            toOffB.forEach { cmds.add("echo 0 > /sys/devices/system/cpu/cpu${it}/online 2>/dev/null") }
+            toOnB.forEach  { cmds.add("echo 1 > /sys/devices/system/cpu/cpu${it}/online 2>/dev/null") }
+        }
+        // Optional: lower GPU freq while screen off
+        if (cfg.screenOffGpuMaxMhz > 0) {
+            cmds.add("echo ${cfg.screenOffGpuMaxMhz * 1_000_000L} > ${SysfsRepository.GPU_MAX} 2>/dev/null")
+        }
+        // Optional: change governor while screen off
+        if (cfg.screenOffGovLittle.isNotEmpty()) {
+            cmds.add("echo ${cfg.screenOffGovLittle} > ${SysfsRepository.CPU0_GOV} 2>/dev/null")
+        }
+        if (cfg.screenOffGovBig.isNotEmpty()) {
+            cmds.add("echo ${cfg.screenOffGovBig} > ${SysfsRepository.CPU4_GOV} 2>/dev/null")
+        }
+        coreRotation++
+        if (cmds.isNotEmpty()) Shell.cmd(*cmds.toTypedArray()).exec()
     }
 
     private suspend fun onScreenOn() {
-        if (cfg.nightMode) Shell.cmd(
-            "for c in 1 2 3 4 5 6 7; do echo 1 > /sys/devices/system/cpu/cpu\${c}/online 2>/dev/null; done"
-        ).exec()
+        if (cfg.nightMode) {
+            val cmds = mutableListOf<String>()
+            // Bring all cores back online
+            (1..7).forEach { cmds.add("echo 1 > /sys/devices/system/cpu/cpu${it}/online 2>/dev/null") }
+            // Restore GPU max if we lowered it
+            // (will be re-applied by apply.sh or next config load)
+            Shell.cmd(*cmds.toTypedArray()).exec()
+        }
         startPolling()
     }
 

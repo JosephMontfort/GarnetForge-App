@@ -22,6 +22,10 @@ class BootReceiver : BroadcastReceiver() {
 
         // Android 14+ restricts startForegroundService from background/boot receivers.
         // Wrap in try/catch and fall back to scheduling a job.
+        // On every boot, queue detect_defaults update (fresh kernel defaults)
+        // This runs via JobScheduler so it doesn't slow down boot
+        // detect_defaults.sh is lightweight and just reads current node values
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
             scheduleBootJob(ctx)
         } else {

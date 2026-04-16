@@ -8,7 +8,7 @@ import kotlinx.coroutines.withContext
 object ScriptManager {
 
     const val INSTALL_DIR    = "/data/data/dev.garnetforge.app/files/garnetforge"
-    private val SCRIPTS      = listOf("apply.sh", "set_cfg.sh", "detect_nodes.sh", "detect_defaults.sh")
+    private val SCRIPTS      = listOf("apply.sh", "set_cfg.sh", "detect_nodes.sh", "detect_defaults.sh", "diagnostic.sh")
     private val VERSION_FILE = "$INSTALL_DIR/.app_version"
     private val DEFAULTS_FILE= "$INSTALL_DIR/defaults.prop"
 
@@ -42,10 +42,15 @@ object ScriptManager {
                     copyAsset(ctx, "scripts/config.prop", "$INSTALL_DIR/config.prop")
                 }
 
-                // Always re-run detect_nodes (kernel may change)
-                Shell.cmd("sh $INSTALL_DIR/detect_nodes.sh").exec()
-                // Signal that node paths need reload in SysfsRepository
-                android.util.Log.i("GarnetForge", "Node detection complete")
+                // Run detect_nodes only when missing, version changed, or forced by reboot flag
+                val nodesExist = Shell.cmd("[ -s $INSTALL_DIR/nodes.prop ] && echo y")
+                    .exec().out.firstOrNull() == "y"
+                if (!nodesExist || needsUpdate) {
+                    Shell.cmd("sh $INSTALL_DIR/detect_nodes.sh").exec()
+                    android.util.Log.i("GarnetForge", "Node detection complete")
+                } else {
+                    android.util.Log.i("GarnetForge", "Skipping node detection — nodes.prop exists")
+                }
 
                 // detect_defaults only on first install or if defaults.prop missing
                 if (!defaultsExist || needsUpdate) {

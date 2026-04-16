@@ -32,6 +32,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Image
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
+import dev.garnetforge.app.DiagnosticState
+import dev.garnetforge.app.SpeedTestState
 import dev.garnetforge.app.service.GarnetService
 import dev.garnetforge.app.ui.navigation.Screen
 import dev.garnetforge.app.ui.screens.*
@@ -79,6 +81,9 @@ class MainActivity : ComponentActivity() {
                 val deviceInfo  by vm.deviceInfo.collectAsState()
                 val coreStates      by vm.coreStates.collectAsState()
                 val dashboardReady  by vm.dashboardReady.collectAsState()
+                val speedTestState  by vm.speedTestState.collectAsState()
+                val diagnosticState by vm.diagnosticState.collectAsState()
+                val entropyLevel    by vm.entropyLevel.collectAsState()
                 val perCoreFreqMhz  by vm.perCoreFreqMhz.collectAsState()
                 val availFreqsL     by vm.availFreqsL.collectAsState()
                 val liveNodes       by vm.liveNodes.collectAsState()
@@ -158,7 +163,10 @@ class MainActivity : ComponentActivity() {
                                     DashboardScreen(stats, config, sconfig, coreStates, onClearRam = { vm.clearRam() })
                                 }
                                 composable(Screen.Tuning.route) {
-                                    TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, blurEnabled = blurEnabled,
+                                    TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults,
+                                        speedTestState = speedTestState, entropyLevel = entropyLevel,
+                                        onRunSpeedTest = { vm.runSpeedTest() },
+                                        blurEnabled = blurEnabled,
                                         onSet = { k, v -> vm.setConfig(k, v) },
                                         onProfileSelected = { vm.applyThermalProfile(it) },
                                         onToggleCore = { vm.toggleCore(it) })
@@ -181,6 +189,8 @@ class MainActivity : ComponentActivity() {
                                 }
                                 composable(Screen.Settings.route) {
                                     SettingsScreen(
+                                        diagnosticState = diagnosticState,
+                                        onRunDiagnostic = { vm.runDiagnostic() },
                                         deviceInfo  = deviceInfo,
                                         themeMode   = themeMode,
                                         accentTheme = accentTheme,

@@ -109,8 +109,15 @@ fun IntelligenceScreen(
                 SectionHeader("AUTOMATION")
                 GarnetCard(glowColor = if (config.nightMode || config.thermalControl) GarnetGlow else PurpleGlow) {
                     LabeledSwitch("Screen-Off Save",
-                        "Offlines extra cores on screen-off. Restores on wake.",
+                        "Offlines extra cores on screen-off to save battery. Restores on wake.",
                         config.nightMode) { onSet("night_mode", if (it) "1" else "0") }
+                    AnimatedVisibility(config.nightMode, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                        ScreenOffCustomiser(config = config, onSet = onSet)
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
+                    LabeledSwitch("Apply on Boot",
+                        "Re-applies all tuning values on device boot. Disable to keep kernel defaults after reboot.",
+                        config.applyOnBoot) { onSet("apply_on_boot", if (it) "1" else "0") }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
                     LabeledSwitch("Charging Control",
                         "Switches to Charging thermal profile when charger connected.",
@@ -696,5 +703,180 @@ private fun SheetSlider(label: String, value: Float, min: Float, max: Float, ste
                 activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent))
         Text(display, style = MaterialTheme.typography.bodyMedium, color = tint, fontWeight = FontWeight.Bold,
             modifier = Modifier.width(76.dp), textAlign = TextAlign.End)
+    }
+}
+
+// ── Screen-Off Save customiser ────────────────────────────────────────
+@Composable
+private fun ScreenOffCustomiser(config: GarnetConfig, onSet: (String, String) -> Unit) {
+    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+    val tCool   = if (isLight) Color(0xFF00695C) else ColorCool
+    val GOVS    = listOf("", "walt", "conservative", "powersave", "schedutil")
+    val GOV_LABELS = listOf("No change", "walt", "conservative", "powersave", "schedutil")
+
+    Column(
+        Modifier.fillMaxWidth()
+            .padding(start = 8.dp, end = 0.dp, top = 6.dp, bottom = 2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.5f))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Screen-Off Configuration", style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold, color = tCool)
+
+        // Chip selectors for core count
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Text("Little cores offline:", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                (0..3).forEach { n ->
+                    FilterChip(selected = config.screenOffLittleCoresOff == n,
+                        onClick = { onSet("screen_off_little_cores_off", n.toString()) },
+                        label = { Text("$n") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = tCool,
+                            selectedLabelColor = Color.White),
+                    )
+                }
+            }
+        }
+
+        // Big cluster cores to offline (0–3, keep at least core 4)
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Text("Big cores offline:", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                (0..3).forEach { n ->
+                    FilterChip(selected = config.screenOffBigCoresOff == n,
+                        onClick = { onSet("screen_off_big_cores_off", n.toString()) },
+                        label = { Text("$n") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = tCool,
+                            selectedLabelColor = Color.White),
+                    )
+                }
+            }
+        }
+
+        // Rotation note
+        Text("⟳ Core rotation enabled — offlines rotate across cores to prevent uneven wear.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+
+        // GPU max while screen off
+        val gpuOptions = listOf(0, 295, 345, 500, 650)
+        val gpuLabels  = listOf("No change", "295 MHz", "345 MHz", "500 MHz", "650 MHz")
+        Text("GPU max while screen off:", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            gpuOptions.forEachIndexed { i, mhz ->
+                FilterChip(selected = config.screenOffGpuMaxMhz == mhz,
+                    onClick = { onSet("screen_off_gpu_max_mhz", mhz.toString()) },
+                    label = { Text(gpuLabels[i], style = MaterialTheme.typography.labelSmall) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = tCool, selectedLabelColor = Color.White),
+                )
+            }
+        }
+
+        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+
+        // Governor override
+        Text("Governor while screen off:", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Little", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    GOVS.forEachIndexed { i, g ->
+                        FilterChip(selected = config.screenOffGovLittle == g,
+                            onClick = { onSet("screen_off_gov_little", g) },
+                            label = { Text(GOV_LABELS[i], style = MaterialTheme.typography.labelSmall) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = tCool, selectedLabelColor = Color.White),
+                        )
+                    }
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Big", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    GOVS.forEachIndexed { i, g ->
+                        FilterChip(selected = config.screenOffGovBig == g,
+                            onClick = { onSet("screen_off_gov_big", g) },
+                            label = { Text(GOV_LABELS[i], style = MaterialTheme.typography.labelSmall) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = tCool, selectedLabelColor = Color.White),
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+
+        // Time window toggle + pickers
+        LabeledSwitch(
+            label = "Active Time Window Only",
+            subtitle = "Only apply screen-off save during a specific time period (e.g. night hours)",
+            checked = config.screenOffTimeEnabled,
+            onCheckedChange = { onSet("screen_off_time_enabled", if (it) "1" else "0") }
+        )
+        AnimatedVisibility(config.screenOffTimeEnabled,
+            enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(Modifier.height(2.dp))
+                Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
+                    TimePickerField(
+                        label = "Start", hour = config.screenOffTimeStart,
+                        onHourChange = { onSet("screen_off_time_start", it.toString()) },
+                        modifier = Modifier.weight(1f), tint = tCool
+                    )
+                    TimePickerField(
+                        label = "End", hour = config.screenOffTimeEnd,
+                        onHourChange = { onSet("screen_off_time_end", it.toString()) },
+                        modifier = Modifier.weight(1f), tint = tCool
+                    )
+                }
+                val (startH, endH) = config.screenOffTimeStart to config.screenOffTimeEnd
+                val desc = if (startH <= endH) "$startH:00 – $endH:00" else "$startH:00 – $endH:00 (next day)"
+                Text("Active window: $desc",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tCool)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimePickerField(
+    label: String, hour: Int, onHourChange: (Int) -> Unit,
+    modifier: Modifier, tint: Color,
+) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalIconButton(
+                onClick = { onHourChange((hour - 1 + 24) % 24) },
+                modifier = Modifier.size(32.dp)
+            ) { Text("−", color = tint, fontWeight = FontWeight.Bold) }
+            Text(
+                "%02d:00".format(hour),
+                style = MaterialTheme.typography.titleMedium,
+                color = tint, fontWeight = FontWeight.Bold
+            )
+            FilledTonalIconButton(
+                onClick = { onHourChange((hour + 1) % 24) },
+                modifier = Modifier.size(32.dp)
+            ) { Text("+", color = tint, fontWeight = FontWeight.Bold) }
+        }
     }
 }

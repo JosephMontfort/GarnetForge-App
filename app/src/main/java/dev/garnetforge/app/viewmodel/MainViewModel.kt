@@ -242,6 +242,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearRam() = viewModelScope.launch { runCatching { sysfsRepo.clearRam(); toast("RAM cleared") } }
 
+    // ── Entropy ───────────────────────────────────────────────────────
+    private val _entropyLevel = MutableStateFlow(-1)
+    val entropyLevel: StateFlow<Int> = _entropyLevel.asStateFlow()
+
+    fun boostEntropy() = viewModelScope.launch {
+        runCatching { sysfsRepo.boostEntropy(); delay(500); refreshEntropy() }
+        toast("Entropy boosted")
+    }
+    fun refreshEntropy() = viewModelScope.launch {
+        runCatching { _entropyLevel.value = sysfsRepo.getEntropyAvailable() }
+    }
+
+    // ── Speed test ────────────────────────────────────────────────────
+    private val _speedTestState = MutableStateFlow<SpeedTestState>(SpeedTestState.Idle)
+    val speedTestState: StateFlow<SpeedTestState> = _speedTestState.asStateFlow()
+
+    fun runSpeedTest() = viewModelScope.launch {
+        _speedTestState.value = SpeedTestState.Running
+        val result = runCatching { sysfsRepo.runSpeedTest() }
+        _speedTestState.value = result.fold(
+            { (dl, ul) -> SpeedTestState.Done(dl, ul) },
+            { SpeedTestState.Error(it.message ?: "Failed") }
+        )
+    }
+
+    // ── Diagnostic ────────────────────────────────────────────────────
+    private val _diagnosticState = MutableStateFlow<DiagnosticState>(DiagnosticState.Idle)
+    val diagnosticState: StateFlow<DiagnosticState> = _diagnosticState.asStateFlow()
+
+    fun runDiagnostic() = viewModelScope.launch {
+        _diagnosticState.value = DiagnosticState.Running
+        val result = runCatching { sysfsRepo.runDiagnostic() }
+        _diagnosticState.value = result.fold(
+            { DiagnosticState.Done(sysfsRepo.getDiagnosticFilePath()) },
+            { DiagnosticState.Error(it.message ?: "Failed") }
+        )
+    }
+
     fun loadApps() = viewModelScope.launch {
         if (_appsLoading.value) return@launch
         _appsLoading.value = true
@@ -309,6 +347,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         "net_rxqueuelen"               -> c.copy(netRxqueuelen        = value.toIntOrNull() ?: c.netRxqueuelen)
         "gpu_idle_timer"               -> c.copy(gpuIdleTimer          = value.toIntOrNull() ?: c.gpuIdleTimer)
         "thermal_boost"                -> c.copy(thermalBoost          = value.toIntOrNull() ?: c.thermalBoost)
+        "apply_on_boot"               -> c.copy(applyOnBoot            = value == "1")
+        "screen_off_little_cores_off"  -> c.copy(screenOffLittleCoresOff= value.toIntOrNull() ?: c.screenOffLittleCoresOff)
+        "screen_off_big_cores_off"     -> c.copy(screenOffBigCoresOff   = value.toIntOrNull() ?: c.screenOffBigCoresOff)
+        "screen_off_gpu_max_mhz"       -> c.copy(screenOffGpuMaxMhz     = value.toIntOrNull() ?: c.screenOffGpuMaxMhz)
+        "screen_off_gov_little"        -> c.copy(screenOffGovLittle     = value)
+        "screen_off_gov_big"           -> c.copy(screenOffGovBig        = value)
+        "screen_off_time_enabled"      -> c.copy(screenOffTimeEnabled    = value == "1")
+        "screen_off_time_start"        -> c.copy(screenOffTimeStart      = value.toIntOrNull() ?: c.screenOffTimeStart)
+        "screen_off_time_end"          -> c.copy(screenOffTimeEnd        = value.toIntOrNull() ?: c.screenOffTimeEnd)
         else                           -> c
     }
 }
