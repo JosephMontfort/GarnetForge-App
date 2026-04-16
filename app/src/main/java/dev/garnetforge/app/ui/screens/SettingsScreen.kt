@@ -23,6 +23,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.compose.ui.platform.LocalContext
 import dev.garnetforge.app.data.model.DeviceInfo
+import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.data.model.DiagnosticState
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
