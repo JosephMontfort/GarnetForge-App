@@ -413,8 +413,8 @@ suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
     suspend fun runDiagnostic(): String = withContext(Dispatchers.IO) {
         val script = "$INSTALL_DIR/diagnostic.sh"
         val out = "$INSTALL_DIR/diagnostic_report.txt"
-        Shell.cmd("[ -f $script ] && sh $script").exec()
-        Shell.cmd("cat $out 2>/dev/null").exec().out.joinToString("
+        Shell.cmd("[ -f \"$script\" ] && sh \"$script\"").exec()
+        Shell.cmd("cat \"$out\" 2>/dev/null").exec().out.joinToString("
 ")
     }
 
