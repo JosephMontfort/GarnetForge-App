@@ -33,7 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.ui.components.*
-import dev.garnetforge.app.viewmodel.*
 import dev.garnetforge.app.ui.theme.*
 import kotlin.math.abs
 import kotlinx.coroutines.launch
