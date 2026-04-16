@@ -26,6 +26,7 @@ import dev.garnetforge.app.data.model.DeviceInfo
 import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.data.model.DiagnosticState
 import dev.garnetforge.app.ui.components.*
+import dev.garnetforge.app.viewmodel.*
 import dev.garnetforge.app.ui.theme.*
 
 @Composable
@@ -55,7 +56,9 @@ fun SettingsScreen(
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column {
                         Text("Theme", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                        Text(when(themeMode) { 1 -> "Dark"; 2 -> "Light"; else -> "System Default" },
+                        Text(when(themeMode) { 1 -> "Dark"; 2 -> "Light"; else -> "System Default" 
+    else -> {}
+},
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -214,7 +217,9 @@ private fun DiagnosticButton(
                             is dev.garnetforge.app.DiagnosticState.Running -> "Collecting diagnostics…"
                             is dev.garnetforge.app.DiagnosticState.Done    -> "Report ready — tap to share"
                             is dev.garnetforge.app.DiagnosticState.Error   -> "Report failed — retry"
-                        },
+                        
+    else -> {}
+},
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
