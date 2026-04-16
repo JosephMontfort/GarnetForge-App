@@ -428,8 +428,7 @@ class SysfsRepository(private val context: Context) {
         val script = "$INSTALL_DIR/diagnostic.sh"
         val out    = "$INSTALL_DIR/diagnostic_report.txt"
         Shell.cmd("[ -f $script ] && sh $script").exec()
-        Shell.cmd("cat $out 2>/dev/null").exec().out.joinToString("
-")
+        Shell.cmd("cat $out 2>/dev/null").exec().out.joinToString("\n")
     }
 
     fun getDiagnosticFilePath(): String = "$INSTALL_DIR/diagnostic_report.txt"
@@ -442,7 +441,7 @@ class SysfsRepository(private val context: Context) {
             "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
             "  https://speed.cloudflare.com/__down?bytes=10000000 2>/dev/null; " +
             "END=6262764063; " +
-            "printf '%d' """
+            "printf '%d' \"\$((END - START))\""
         ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
         val dlMbps = if (dlRaw > 0) (10_000_000f * 8 / 1_000_000f) / (dlRaw / 1000f) else -1f
 
@@ -453,7 +452,7 @@ class SysfsRepository(private val context: Context) {
             "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
             "  -X POST -d @- https://speed.cloudflare.com/__up 2>/dev/null; " +
             "END=6262764072; " +
-            "printf '%d' """
+            "printf '%d' \"\$((END - START))\""
         ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
         val ulMbps = if (ulRaw > 0) (2_000_000f * 8 / 1_000_000f) / (ulRaw / 1000f) else -1f
 
