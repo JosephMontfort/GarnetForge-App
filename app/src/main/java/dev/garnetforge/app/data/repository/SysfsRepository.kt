@@ -166,44 +166,58 @@ class SysfsRepository(private val context: Context) {
     }
 
 // ── Live stats ────────────────────────────────────────────────────
-suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
-    val raw = Shell.cmd(
-        "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' " +
-        "\"\$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpufreq/policy4/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat $GPU_CUR 2>/dev/null)\" " +
-        "\"\$(cat /sys/class/thermal/thermal_zone67/temp 2>/dev/null)\" " +
-        "\"\$(cat /sys/class/thermal/thermal_zone31/temp 2>/dev/null)\" " +
-        "\"\$(cat /sys/class/thermal/thermal_zone43/temp 2>/dev/null)\" " +
-        "\"\$(cat /sys/class/power_supply/battery/temp 2>/dev/null)\" " +
-        "\"\$(awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu2/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu3/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu4/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu5/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_cur_freq 2>/dev/null)\" " +
-        "\"\$(cat /sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq 2>/dev/null)\""
-    ).exec().out.firstOrNull() ?: ""
-    val p = raw.split("|")
-    fun lk(i: Int) = p.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
-    val perCore = (8..15).map { i -> (lk(i) / 1000).toInt() }
-    val h = LocalTime.now().hour
-    val h12 = if (h % 12 == 0) 12 else h % 12
-    LiveStats(
-        cpu0FreqMhz = (lk(0) / 1000).toInt(),
-        cpu4FreqMhz = (lk(1) / 1000).toInt(),
-        gpuFreqMhz = (lk(2) / 1_000_000).toInt(),
-        cpuTempC = (lk(3) / 1000).toInt(),
-        gpuTempC = (lk(4) / 1000).toInt(),
-        ddrTempC = (lk(5) / 1000).toInt(),
-        battTempC = (lk(6) / 10).toInt(),
-        freeRamMb = (lk(7) / 1024).toInt(),
-        timeStr = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} ${if (h < 12) "AM" else "PM"}",
-        perCoreFreqMhz = perCore,
-    )
-}
+    // ── Live stats ────────────────────────────────────────────────
+    // ── Live stats ────────────────────────────────────────────────────
+    suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
+        val np = Shell.cmd("cat $NODES 2>/dev/null").exec().out.associate { line ->
+            val eq = line.indexOf('='); if (eq > 0) line.substring(0, eq) to line.substring(eq + 1) else "" to ""
+        }
+        fun tzp(k: String, fb: String) = np[k]?.trim()?.takeIf { it.startsWith("/") } ?: fb
+        val cpuTz = tzp("thermal_zone_cpu",  tzp("thermal_zone_cpu_fb",  "/sys/class/thermal/thermal_zone67/temp"))
+        val gpuTz = tzp("thermal_zone_gpu",  tzp("thermal_zone_gpu_fb",  "/sys/class/thermal/thermal_zone31/temp"))
+        val ddrTz = tzp("thermal_zone_ddr",  tzp("thermal_zone_ddr_fb",  "/sys/class/thermal/thermal_zone43/temp"))
+        val battN = tzp("battery_temp", "/sys/class/power_supply/battery/temp")
+        val coreCount = np["cpu_core_count"]?.trim()?.toIntOrNull()?.coerceIn(1, 16) ?: 8
+        val litN = CPU0_MAX.replace("scaling_max_freq", "scaling_cur_freq")
+        val bigN = CPU4_MAX.replace("scaling_max_freq", "scaling_cur_freq")
+
+        val clRaw = Shell.cmd(
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s' " +
+            "\"$(cat $litN 2>/dev/null)\" " +
+            "\"$(cat $bigN 2>/dev/null)\" " +
+            "\"$(cat $GPU_CUR 2>/dev/null)\" " +
+            "\"$(cat $cpuTz 2>/dev/null)\" " +
+            "\"$(cat $gpuTz 2>/dev/null)\" " +
+            "\"$(cat $ddrTz 2>/dev/null)\" " +
+            "\"$(cat $battN 2>/dev/null)\" " +
+            "\"$(awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null)\""
+        ).exec().out.firstOrNull() ?: ""
+
+        val perCoreFreqs = (0 until coreCount).map { c ->
+            val n = np["cpu${c}_cur_freq"]?.trim()
+                ?: "/sys/devices/system/cpu/cpu${c}/cpufreq/scaling_cur_freq"
+            Shell.cmd("cat $n 2>/dev/null").exec().out.firstOrNull()
+                ?.trim()?.toLongOrNull()?.div(1000)?.toInt() ?: 0
+        }.let { if (it.size < 8) it + List(8 - it.size) { 0 } else it }
+
+        val cp = clRaw.split("|")
+        fun ck(i: Int) = cp.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
+        val h = LocalTime.now().hour
+        val h12 = if (h % 12 == 0) 12 else h % 12
+        val ampm = if (h < 12) "AM" else "PM"
+        LiveStats(
+            cpu0FreqMhz    = (ck(0) / 1000).toInt(),
+            cpu4FreqMhz    = (ck(1) / 1000).toInt(),
+            gpuFreqMhz     = (ck(2) / 1_000_000).toInt(),
+            cpuTempC       = (ck(3) / 1000).toInt(),
+            gpuTempC       = (ck(4) / 1000).toInt(),
+            ddrTempC       = (ck(5) / 1000).toInt(),
+            battTempC      = (ck(6) / 10).toInt(),
+            freeRamMb      = (ck(7) / 1024).toInt(),
+            timeStr        = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} $ampm",
+            perCoreFreqMhz = perCoreFreqs,
+        )
+    }
 
     suspend fun getCurrentSconfig(): String = withContext(Dispatchers.IO) {
         Shell.cmd("cat $SCONFIG 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "20"
@@ -428,7 +442,7 @@ suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
             "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
             "  https://speed.cloudflare.com/__down?bytes=10000000 2>/dev/null; " +
             "END=6262764063; " +
-            "printf '%d' " ""
+            "printf '%d' """
         ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
         val dlMbps = if (dlRaw > 0) (10_000_000f * 8 / 1_000_000f) / (dlRaw / 1000f) else -1f
 
@@ -439,7 +453,7 @@ suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
             "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
             "  -X POST -d @- https://speed.cloudflare.com/__up 2>/dev/null; " +
             "END=6262764072; " +
-            "printf '%d' " ""
+            "printf '%d' """
         ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
         val ulMbps = if (ulRaw > 0) (2_000_000f * 8 / 1_000_000f) / (ulRaw / 1000f) else -1f
 

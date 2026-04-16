@@ -1,5 +1,7 @@
 package dev.garnetforge.app.viewmodel
 
+import dev.garnetforge.app.DiagnosticState
+import dev.garnetforge.app.SpeedTestState
 import android.app.Application
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel

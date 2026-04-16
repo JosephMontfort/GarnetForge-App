@@ -31,6 +31,7 @@ import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import dev.garnetforge.app.SpeedTestState
 import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
@@ -76,7 +77,7 @@ fun TuningScreen(
     availFreqsGpu: List<Int>,
     liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
     nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
-    speedTestState: dev.garnetforge.app.SpeedTestState,
+    speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit = {},
     blurEnabled: Boolean,
@@ -229,7 +230,7 @@ private fun HeroOverlay(
     availFreqsGpu: List<Int>,
     liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
     nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
-    speedTestState: dev.garnetforge.app.SpeedTestState,
+    speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
     onSet: (String, String) -> Unit,
@@ -495,7 +496,7 @@ private fun SectionContent(
     availFreqsL: List<Int>, availFreqsB: List<Int>, availFreqsGpu: List<Int>,
     liveNodes: dev.garnetforge.app.data.model.LiveNodeValues,
     nodeDefaults: dev.garnetforge.app.data.model.NodeDefaults,
-    speedTestState: dev.garnetforge.app.SpeedTestState,
+    speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
     onSet: (String,String)->Unit,
@@ -715,7 +716,7 @@ private fun SectionContent(
             ) { onSet("net_rxqueuelen", rxq.toString()) }
             Spacer(Modifier.height(12.dp))
             NetworkSpeedTestPanel(speedTestState, onSet)
-            val isSpeedRunning = speedTestState is dev.garnetforge.app.SpeedTestState.Running
+            val isSpeedRunning = speedTestState is SpeedTestState.Running
             Button(onClick = onRunSpeedTest,
                 enabled = !isSpeedRunning,
                 modifier = Modifier.fillMaxWidth(),
@@ -734,7 +735,7 @@ private fun SectionContent(
 // ── Network Speed Test Panel ──────────────────────────────────────────
 @Composable
 private fun NetworkSpeedTestPanel(
-    state: dev.garnetforge.app.SpeedTestState,
+    state: SpeedTestState,
     @Suppress("UNUSED_PARAMETER") onSet: (String, String) -> Unit,
 ) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
@@ -755,18 +756,18 @@ private fun NetworkSpeedTestPanel(
                 fontWeight = FontWeight.Bold, color = tBlue)
         }
         when (state) {
-            is dev.garnetforge.app.SpeedTestState.Idle ->
+            is SpeedTestState.Idle ->
                 Text("Tap 'Run Speed Test' to test via Cloudflare.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-            is dev.garnetforge.app.SpeedTestState.Running ->
+            is SpeedTestState.Running ->
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(Modifier.size(16.dp), color = tBlue, strokeWidth = 2.dp)
                     Text("Testing… (~15s)", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            is dev.garnetforge.app.SpeedTestState.Done -> {
+            is SpeedTestState.Done -> {
                 Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
                     SpeedReadout("Download", state.downloadMbps, tBlue, Modifier.weight(1f))
                     SpeedReadout("Upload",   state.uploadMbps,   tBlue, Modifier.weight(1f))
@@ -776,7 +777,7 @@ private fun NetworkSpeedTestPanel(
                     if (!shown) { showWidgetPrompt = true; prefs.edit().putBoolean("widget_prompt_shown", true).apply() }
                 }
             }
-            is dev.garnetforge.app.SpeedTestState.Error ->
+            is SpeedTestState.Error ->
                 Text("Error: ${state.msg}", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
         }

@@ -22,6 +22,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.compose.ui.platform.LocalContext
+import dev.garnetforge.app.DiagnosticState
 import dev.garnetforge.app.data.model.DeviceInfo
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
@@ -32,7 +33,7 @@ fun SettingsScreen(
     themeMode: Int,
     accentTheme: Int,
     blurEnabled: Boolean,
-    diagnosticState: dev.garnetforge.app.DiagnosticState,
+    diagnosticState: DiagnosticState,
     onTheme: (Int) -> Unit,
     onAccent: (Int) -> Unit,
     onBlurToggle: (Boolean) -> Unit,
@@ -185,17 +186,17 @@ private fun AccentSwatch(palette: AccentPalette, selected: Boolean, onClick: () 
 
 @Composable
 private fun DiagnosticButton(
-    state: dev.garnetforge.app.DiagnosticState,
+    state: DiagnosticState,
     onRun: () -> Unit,
     onShare: (String) -> Unit,
 ) {
-    val isRunning = state is dev.garnetforge.app.DiagnosticState.Running
+    val isRunning = state is DiagnosticState.Running
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(enabled = !isRunning) { if (state is dev.garnetforge.app.DiagnosticState.Done) onShare(state.filePath) else onRun() }
+                .clickable(enabled = !isRunning) { if (state is DiagnosticState.Done) onShare(state.filePath) else onRun() }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             Arrangement.SpaceBetween, Alignment.CenterVertically
         ) {
@@ -208,10 +209,10 @@ private fun DiagnosticButton(
                 Column {
                     Text(
                         when (state) {
-                            is dev.garnetforge.app.DiagnosticState.Idle    -> "Generate Diagnostic Report"
-                            is dev.garnetforge.app.DiagnosticState.Running -> "Collecting diagnostics…"
-                            is dev.garnetforge.app.DiagnosticState.Done    -> "Report ready — tap to share"
-                            is dev.garnetforge.app.DiagnosticState.Error   -> "Report failed — retry"
+                            is DiagnosticState.Idle    -> "Generate Diagnostic Report"
+                            is DiagnosticState.Running -> "Collecting diagnostics…"
+                            is DiagnosticState.Done    -> "Report ready — tap to share"
+                            is DiagnosticState.Error   -> "Report failed — retry"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
@@ -222,11 +223,11 @@ private fun DiagnosticButton(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (state is dev.garnetforge.app.DiagnosticState.Done) {
+            if (state is DiagnosticState.Done) {
                 Icon(Icons.Default.Share, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             }
         }
-        if (state is dev.garnetforge.app.DiagnosticState.Error) {
+        if (state is DiagnosticState.Error) {
             Text("Error: ${state.msg}", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error)
         }
