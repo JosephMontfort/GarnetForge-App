@@ -36,6 +36,8 @@ import dev.garnetforge.app.DiagnosticState
 import dev.garnetforge.app.SpeedTestState
 import dev.garnetforge.app.service.GarnetService
 import dev.garnetforge.app.ui.navigation.Screen
+import dev.garnetforge.app.data.model.DiagnosticState
+import dev.garnetforge.app.data.model.SpeedTestState
 import dev.garnetforge.app.ui.screens.*
 import dev.garnetforge.app.ui.theme.*
 import dev.garnetforge.app.viewmodel.MainViewModel
