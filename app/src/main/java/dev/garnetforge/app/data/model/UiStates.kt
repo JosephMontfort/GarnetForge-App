@@ -1,27 +1,55 @@
 package dev.garnetforge.app.data.model
 
 sealed interface SpeedTestState {
-    val downloadMbps: Double get() = 0.0
-    val uploadMbps: Double get() = 0.0
-    val msg: String get() = ""
+    val downloadMbps: Double
+    val uploadMbps: Double
+    val msg: String
 
-    data object Idle : SpeedTestState
-    data object Running : SpeedTestState
-    data class Result(
-        override val downloadMbps: Double,
-        override val uploadMbps: Double,
-        override val msg: String = "Speed test complete",
+    data object Idle : SpeedTestState {
+        override val downloadMbps = 0.0
+        override val uploadMbps = 0.0
+        override val msg = ""
+    }
+
+    data object Running : SpeedTestState {
+        override val downloadMbps = 0.0
+        override val uploadMbps = 0.0
+        override val msg = "Running"
+    }
+
+    data class Done(
+        override val downloadMbps: Double = 0.0,
+        override val uploadMbps: Double = 0.0,
+        override val msg: String = "Done",
     ) : SpeedTestState
-    data class Error(override val msg: String) : SpeedTestState
+
+    data class Error(override val msg: String) : SpeedTestState {
+        override val downloadMbps = 0.0
+        override val uploadMbps = 0.0
+    }
 }
 
 sealed interface DiagnosticState {
-    val filePath: String get() = ""
-    val msg: String get() = ""
+    val filePath: String
+    val msg: String
 
-    data object Idle : DiagnosticState
-    data object Running : DiagnosticState
-    data class Ready(override val filePath: String) : DiagnosticState
-    data class Sharing(override val filePath: String) : DiagnosticState
-    data class Error(override val msg: String) : DiagnosticState
+    data object Idle : DiagnosticState {
+        override val filePath = ""
+        override val msg = ""
+    }
+
+    data object Running : DiagnosticState {
+        override val filePath = ""
+        override val msg = "Running"
+    }
+
+    data class Done(
+        override val filePath: String = "",
+        override val msg: String = "Done",
+    ) : DiagnosticState
+
+    data class Error(
+        override val msg: String,
+        override val filePath: String = "",
+    ) : DiagnosticState
 }
