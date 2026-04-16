@@ -57,7 +57,6 @@ fun SettingsScreen(
                     Column {
                         Text("Theme", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                         Text(when(themeMode) { 1 -> "Dark"; 2 -> "Light"; else -> "System Default" 
-    else -> {}
 },
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -217,8 +216,7 @@ private fun DiagnosticButton(
                             is dev.garnetforge.app.DiagnosticState.Running -> "Collecting diagnostics…"
                             is dev.garnetforge.app.DiagnosticState.Done    -> "Report ready — tap to share"
                             is dev.garnetforge.app.DiagnosticState.Error   -> "Report failed — retry"
-                        
-    else -> {}
+    else -> TODO()
 },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
