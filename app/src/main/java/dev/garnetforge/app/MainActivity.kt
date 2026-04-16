@@ -32,8 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Image
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.*
-import dev.garnetforge.app.DiagnosticState
-import dev.garnetforge.app.SpeedTestState
 import dev.garnetforge.app.service.GarnetService
 import dev.garnetforge.app.ui.navigation.Screen
 import dev.garnetforge.app.data.model.DiagnosticState

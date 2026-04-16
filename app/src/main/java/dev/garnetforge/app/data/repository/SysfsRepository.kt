@@ -412,41 +412,35 @@ suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
     // ── Diagnostic report ─────────────────────────────────────────────
     suspend fun runDiagnostic(): String = withContext(Dispatchers.IO) {
         val script = "$INSTALL_DIR/diagnostic.sh"
-        val out    = "$INSTALL_DIR/diagnostic_report.txt"
+        val out = "$INSTALL_DIR/diagnostic_report.txt"
         Shell.cmd("[ -f $script ] && sh $script").exec()
         Shell.cmd("cat $out 2>/dev/null").exec().out.joinToString("
 ")
     }
 
     fun getDiagnosticFilePath(): String = "$INSTALL_DIR/diagnostic_report.txt"
-
-    // ── Network speed test (using shell dd + /dev/urandom for throughput) ─
+    // ── Network speed test ─────────────────────────────────────────
     suspend fun runSpeedTest(): Pair<Float, Float> = withContext(Dispatchers.IO) {
-        // Download test: time downloading from a public test endpoint
-        val dlRaw = Shell.cmd(
-            "START=6262764059; " +
-            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
-            "  https://speed.cloudflare.com/__down?bytes=10000000 2>/dev/null; " +
-            "END=6262764063; " +
-            "printf '%d' " ""
-        ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
-        val dlMbps = if (dlRaw > 0) (10_000_000f * 8 / 1_000_000f) / (dlRaw / 1000f) else -1f
+        val dlStart = System.currentTimeMillis()
+        Shell.cmd(
+            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 https://speed.cloudflare.com/__down?bytes=10000000 2>/dev/null"
+        ).exec()
+        val dlElapsedMs = (System.currentTimeMillis() - dlStart).coerceAtLeast(1L)
+        val dlMbps = (10_000_000f * 8f / 1_000_000f) / (dlElapsedMs / 1000f)
 
-        // Upload test: time uploading 2MB of zeros
-        val ulRaw = Shell.cmd(
-            "START=6262764067; " +
-            "dd if=/dev/urandom bs=1024 count=2048 2>/dev/null | " +
-            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
-            "  -X POST -d @- https://speed.cloudflare.com/__up 2>/dev/null; " +
-            "END=6262764072; " +
-            "printf '%d' " ""
-        ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
-        val ulMbps = if (ulRaw > 0) (2_000_000f * 8 / 1_000_000f) / (ulRaw / 1000f) else -1f
+        val ulStart = System.currentTimeMillis()
+        Shell.cmd(
+            "dd if=/dev/zero bs=1024 count=2048 2>/dev/null | " +
+            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 -X POST -d @- https://speed.cloudflare.com/__up 2>/dev/null"
+        ).exec()
+        val ulElapsedMs = (System.currentTimeMillis() - ulStart).coerceAtLeast(1L)
+        val ulMbps = (2_000_000f * 8f / 1_000_000f) / (ulElapsedMs / 1000f)
 
         Pair(dlMbps, ulMbps)
     }
 
     // ── Installed app list ────────────────────────────────────────────
+
     suspend fun getInstalledApps(): List<ThermalApp> = withContext(Dispatchers.Default) {
         val pm = context.packageManager
         val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).also {
