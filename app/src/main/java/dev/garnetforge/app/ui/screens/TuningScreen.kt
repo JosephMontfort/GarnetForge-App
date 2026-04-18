@@ -59,8 +59,7 @@ private val SECTIONS = listOf(
     TuningSection("memory",     Icons.Default.Storage,      "Memory"),
     TuningSection("thermal",    Icons.Default.Thermostat,   "Thermal"),
     TuningSection("io",         Icons.Default.Tune,         "I/O"),
-    TuningSection("network",    Icons.Default.NetworkCheck, "Network"),
-)
+    TuningSection("network",    Icons.Default.NetworkCheck, "Network"))
 
 // ── Chip position capture ─────────────────────────────────────────────
 private data class ChipBounds(val offset: IntOffset, val size: IntSize)
@@ -83,8 +82,7 @@ fun TuningScreen(
     blurEnabled: Boolean,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
-    onToggleCore: (Int) -> Unit,
-) {
+    onToggleCore: (Int) -> Unit, littleFreqLocked: Boolean = false, bigFreqLocked: Boolean = false, gpuFreqLocked: Boolean = false, onToggleLittleLock: () -> Unit = {}, onToggleBigLock: () -> Unit = {}, onToggleGpuLock: () -> Unit = {}) {
     val density = LocalDensity.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
 
@@ -156,8 +154,7 @@ fun TuningScreen(
                             }
                             targetExpandedId = section.id
                         },
-                    contentAlignment = Alignment.Center,
-                ) {
+                    contentAlignment = Alignment.Center) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally, 
                         verticalArrangement = Arrangement.Center,
@@ -214,8 +211,7 @@ fun TuningScreen(
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
                         onDismissRequest = { if (targetExpandedId == id) targetExpandedId = null },
-                        onFullyClosed    = { activeOverlayIds.remove(id) },
-                    )
+                        onFullyClosed    = { activeOverlayIds.remove(id) })
                 }
             }
         }
@@ -239,18 +235,11 @@ private fun HeroOverlay(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
-    littleFreqLocked: Boolean = false,
-    bigFreqLocked: Boolean = false,
-    gpuFreqLocked: Boolean = false,
-    onToggleLittleLock: () -> Unit = {},
-    onToggleBigLock: () -> Unit = {},
-    onToggleGpuLock: () -> Unit = {},
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
     onToggleCore: (Int) -> Unit,
     onDismissRequest: () -> Unit,
-    onFullyClosed: () -> Unit,
-) {
+    onFullyClosed: () -> Unit) {
     val density = LocalDensity.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     
@@ -283,13 +272,11 @@ private fun HeroOverlay(
 
     val snapTranslateY by animateFloatAsState(
         targetValue = if (isDragging) dragY else 0f,
-        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapY",
-    )
+        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapY")
     val dragScale = if (isDragging) (1f - (kotlin.math.abs(dragY) / 3000f)).coerceIn(0.85f, 1f) else 1f
     val snapScale by animateFloatAsState(
         targetValue = dragScale,
-        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapScale",
-    )
+        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapScale")
 
     LaunchedEffect(transition.currentState, internalExpanded) {
         if (!internalExpanded && transition.currentState == false) {
@@ -351,8 +338,7 @@ private fun HeroOverlay(
                 }
                 Column(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
+                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, littleFreqLocked, bigFreqLocked, gpuFreqLocked, onToggleLittleLock, onToggleBigLock, onToggleGpuLock, onSet, onProfileSelected, onToggleCore)
                     Spacer(Modifier.height(40.dp))
                 }
@@ -365,8 +351,7 @@ private fun HeroOverlay(
                 .offset { IntOffset(0, 0) }
                 .size(
                     width  = with(density) { animWidth.toDp() },
-                    height = with(density) { animHeight.toDp() },
-                )
+                    height = with(density) { animHeight.toDp() })
                 .graphicsLayer {
                     this.rotationY       = rotationY
                     this.cameraDistance  = 12f * density.density
@@ -427,8 +412,7 @@ private fun HeroOverlay(
                     .offset { IntOffset(left.toInt(), (top + snapTranslateY).toInt()) }
                     .size(
                         width  = with(density) { animWidth.toDp() },
-                        height = with(density) { animHeight.toDp() },
-                    )
+                        height = with(density) { animHeight.toDp() })
                     .graphicsLayer(
                         scaleX = snapScale,
                         scaleY = snapScale,
@@ -447,8 +431,7 @@ private fun HeroOverlay(
                                 if (kotlin.math.abs(dragY) > DISMISS_THRESHOLD) triggerDismiss() else dragY = 0f
                             },
                             onDragCancel = { isDragging = false; dragY = 0f },
-                            onVerticalDrag = { _, delta -> dragY = (dragY + delta).coerceIn(-fullH, fullH) },
-                        )
+                            onVerticalDrag = { _, delta -> dragY = (dragY + delta).coerceIn(-fullH, fullH) })
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -511,21 +494,8 @@ private fun SectionContent(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
-    littleFreqLocked: Boolean = false,
-    bigFreqLocked: Boolean = false,
-    gpuFreqLocked: Boolean = false,
-    onToggleLittleLock: () -> Unit = {},
-    onToggleBigLock: () -> Unit = {},
-    onToggleGpuLock: () -> Unit = {},
     onSet: (String,String)->Unit,
-    onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
-    littleFreqLocked: Boolean = false,
-    bigFreqLocked: Boolean = false,
-    gpuFreqLocked: Boolean = false,
-    onToggleLittleLock: () -> Unit = {},
-    onToggleBigLock: () -> Unit = {},
-    onToggleGpuLock: () -> Unit = {},
-) {
+    onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     val tRed    = if (isLight) GarnetRed    else GarnetLight
     val tBlue   = if (isLight) Color(0xFF0288D1) else ColorBlue
@@ -551,13 +521,11 @@ private fun SectionContent(
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
                 onRevert = { minI = 0; onSet("cpu_policy0_min", freqL.first().toString()) },
-                info = "Minimum allowed frequency. Lower = better idle battery life.",
-            ) { onSet("cpu_policy0_min", freqL[minI].toString()) }
+                info = "Minimum allowed frequency. Lower = better idle battery life.") { onSet("cpu_policy0_min", freqL[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
                 onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) },
-                info = "Maximum allowed frequency. Limit to save battery or thermals.",
-            ) { onSet("cpu_policy0_max", freqL[maxI].toString()) }
+                info = "Maximum allowed frequency. Limit to save battery or thermals.") { onSet("cpu_policy0_max", freqL[maxI].toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(littleFreqLocked) { onToggleLittleLock() }
         }
@@ -576,13 +544,11 @@ private fun SectionContent(
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqB.lastIndex.toFloat(), (freqB.size-2).coerceAtLeast(0),
                 "${freqB.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
                 onRevert = { minI = 0; onSet("cpu_policy4_min", freqB.first().toString()) },
-                info = "Minimum allowed frequency for big cores.",
-            ) { onSet("cpu_policy4_min", freqB[minI].toString()) }
+                info = "Minimum allowed frequency for big cores.") { onSet("cpu_policy4_min", freqB[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqB.lastIndex.toFloat(), (freqB.size-2).coerceAtLeast(0),
                 "${freqB.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
                 onRevert = { maxI = freqB.lastIndex; onSet("cpu_policy4_max", freqB.last().toString()) },
-                info = "Maximum frequency for big cores. Limit for thermals.",
-            ) { onSet("cpu_policy4_max", freqB[maxI].toString()) }
+                info = "Maximum frequency for big cores. Limit for thermals.") { onSet("cpu_policy4_max", freqB[maxI].toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(bigFreqLocked) { onToggleBigLock() }
         }
@@ -619,25 +585,21 @@ private fun SectionContent(
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqG.lastIndex.toFloat(), (freqG.size-2).coerceAtLeast(0),
                 "${freqG.getOrElse(minI){0}} MHz", tPurple, { minI=it.toInt() },
                 onRevert = { minI = 0; onSet("gpu_min", freqG.first().toString()) },
-                info = "Minimum GPU frequency. Higher = smoother at cost of battery.",
-            ) { onSet("gpu_min", freqG[minI].toString()) }
+                info = "Minimum GPU frequency. Higher = smoother at cost of battery.") { onSet("gpu_min", freqG[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqG.lastIndex.toFloat(), (freqG.size-2).coerceAtLeast(0),
                 "${freqG.getOrElse(maxI){0}} MHz", tPurple, { maxI=it.toInt() },
                 onRevert = { maxI = freqG.lastIndex; onSet("gpu_max", freqG.last().toString()) },
-                info = "Maximum GPU frequency. Limit for thermals during gaming.",
-            ) { onSet("gpu_max", freqG[maxI].toString()) }
+                info = "Maximum GPU frequency. Limit for thermals during gaming.") { onSet("gpu_max", freqG[maxI].toString()) }
             // Power level — continuous 0-8
             RevertableSlider("Power Level", pl.toFloat(), 0f, 8f, 0,
                 "$pl (0=max perf, 8=min)", tPurple, { pl=it.toInt() },
                 onRevert = { pl = 0; onSet("gpu_pwrlevel", "0") },
-                info = "GPU power level override. 0 = max performance, 8 = minimum power. Writes /sys/class/kgsl/kgsl-3d0/pwrlevel.",
-            ) { onSet("gpu_pwrlevel", pl.toString()) }
+                info = "GPU power level override. 0 = max performance, 8 = minimum power. Writes /sys/class/kgsl/kgsl-3d0/pwrlevel.") { onSet("gpu_pwrlevel", pl.toString()) }
             // Idle timer — continuous 1-1000ms
             RevertableSlider("Idle Timer", idleTimer.toFloat(), 1f, 1000f, 0,
                 "$idleTimer ms", tPurple, { idleTimer=it.toInt() },
                 onRevert = { idleTimer = nodeDefaults.gpuIdleTimer; onSet("gpu_idle_timer", nodeDefaults.gpuIdleTimer.toString()) },
-                info = "GPU goes idle after this many ms of no work. Lower = faster idle, more battery saving.",
-            ) { onSet("gpu_idle_timer", idleTimer.toString()) }
+                info = "GPU goes idle after this many ms of no work. Lower = faster idle, more battery saving.") { onSet("gpu_idle_timer", idleTimer.toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(gpuFreqLocked) { onToggleGpuLock() }
         }
@@ -659,28 +621,23 @@ private fun SectionContent(
             RevertableSlider("Swappiness", swap.toFloat(), 0f, 200f, 0,
                 "$swap", tBlue, { swap = it.toInt() },
                 onRevert = { swap = nodeDefaults.vmSwappiness; onSet("vm_swappiness", nodeDefaults.vmSwappiness.toString()) },
-                info = "How aggressively kernel swaps. 0 = prefer RAM, 100 = balanced, 200 = max swap.",
-            ) { onSet("vm_swappiness", swap.toString()) }
+                info = "How aggressively kernel swaps. 0 = prefer RAM, 100 = balanced, 200 = max swap.") { onSet("vm_swappiness", swap.toString()) }
             RevertableSlider("Dirty Ratio", dirty.toFloat(), 1f, 90f, 0,
                 "$dirty %", tBlue, { dirty = it.toInt() },
                 onRevert = { dirty = nodeDefaults.vmDirtyRatio; onSet("vm_dirty_ratio", nodeDefaults.vmDirtyRatio.toString()) },
-                info = "Max dirty memory % before process blocks to write.",
-            ) { onSet("vm_dirty_ratio", dirty.toString()) }
+                info = "Max dirty memory % before process blocks to write.") { onSet("vm_dirty_ratio", dirty.toString()) }
             RevertableSlider("Dirty BG Ratio", dirtyBg.toFloat(), 1f, 50f, 0,
                 "$dirtyBg %", tBlue, { dirtyBg = it.toInt() },
                 onRevert = { dirtyBg = nodeDefaults.vmDirtyBackgroundRatio; onSet("vm_dirty_background_ratio", nodeDefaults.vmDirtyBackgroundRatio.toString()) },
-                info = "Dirty memory % that triggers background writeback.",
-            ) { onSet("vm_dirty_background_ratio", dirtyBg.toString()) }
+                info = "Dirty memory % that triggers background writeback.") { onSet("vm_dirty_background_ratio", dirtyBg.toString()) }
             RevertableSlider("VFS Cache Pressure", vfs.toFloat(), 10f, 500f, 0,
                 "$vfs", tBlue, { vfs = it.toInt() },
                 onRevert = { vfs = nodeDefaults.vmVfsCachePressure; onSet("vm_vfs_cache_pressure", nodeDefaults.vmVfsCachePressure.toString()) },
-                info = "Tendency to reclaim inode/dentry cache. 100 = kernel default.",
-            ) { onSet("vm_vfs_cache_pressure", vfs.toString()) }
+                info = "Tendency to reclaim inode/dentry cache. 100 = kernel default.") { onSet("vm_vfs_cache_pressure", vfs.toString()) }
             RevertableSlider("ZRAM Size", zI.toFloat(), 0f, 5f, 4,
                 "${listOf(1,2,3,4,6,8)[zI.coerceIn(0,5)]} GB", tBlue, { zI = it.toInt() },
                 onRevert = { zI = 3; onSet("zram_size", ZRAM_B[3].toString()) },
-                info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.",
-            ) { onSet("zram_size", ZRAM_B[zI].toString()) }
+                info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.") { onSet("zram_size", ZRAM_B[zI].toString()) }
             Spacer(Modifier.height(4.dp))
             ChipRowTuning("ZRAM Algorithm", ZRAM_ALGOS, config.zramAlgo,
                 info = "Compression: lz4 = fastest, zstd = best ratio, lzo = balanced.") { onSet("zram_algo", it) }
@@ -725,8 +682,7 @@ private fun SectionContent(
             RevertableSlider("Read-Ahead", readAheadIdx.toFloat(), 0f, READ_AHEAD_VALS.lastIndex.toFloat(), READ_AHEAD_VALS.lastIndex - 1,
                 "${READ_AHEAD_VALS[readAheadIdx]} KB", tCool, { readAheadIdx = it.toInt() },
                 onRevert = { readAheadIdx = READ_AHEAD_VALS.indexOfFirst { it == nodeDefaults.readAheadKb }.coerceAtLeast(0); onSet("read_ahead_kb", nodeDefaults.readAheadKb.toString()) },
-                info = "Pre-fetch buffer per block device. Higher = better sequential read, more RAM.",
-            ) { onSet("read_ahead_kb", READ_AHEAD_VALS[readAheadIdx].toString()) }
+                info = "Pre-fetch buffer per block device. Higher = better sequential read, more RAM.") { onSet("read_ahead_kb", READ_AHEAD_VALS[readAheadIdx].toString()) }
         }
         "network" -> {
             Text("Network", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tBlue)
@@ -742,8 +698,7 @@ private fun SectionContent(
             RevertableSlider("TX Queue Length", rxq.toFloat(), 100f, 10000f, 99,
                 "$rxq", tBlue, { rxq = it.toInt() },
                 onRevert = { rxq = nodeDefaults.netRxqueuelen; onSet("net_rxqueuelen", nodeDefaults.netRxqueuelen.toString()) },
-                info = "Network interface TX queue depth. Higher = better throughput under load.",
-            ) { onSet("net_rxqueuelen", rxq.toString()) }
+                info = "Network interface TX queue depth. Higher = better throughput under load.") { onSet("net_rxqueuelen", rxq.toString()) }
             Spacer(Modifier.height(12.dp))
             NetworkSpeedTestPanel(speedTestState, onSet)
             val isSpeedRunning = speedTestState is SpeedTestState.Running
@@ -766,8 +721,7 @@ private fun SectionContent(
 @Composable
 private fun NetworkSpeedTestPanel(
     state: SpeedTestState,
-    @Suppress("UNUSED_PARAMETER") onSet: (String, String) -> Unit,
-) {
+    @Suppress("UNUSED_PARAMETER") onSet: (String, String) -> Unit) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     val tBlue   = if (isLight) Color(0xFF0288D1) else ColorBlue
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -897,8 +851,7 @@ private fun RevertableSlider(
     display: String, tint: Color, onDrag: (Float)->Unit,
     onRevert: () -> Unit,
     info: String,
-    onCommit: ()->Unit,
-) {
+    onCommit: ()->Unit) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     var showInfo by remember { mutableStateOf(false) }
     Column {
@@ -940,9 +893,7 @@ private fun RevertableSlider(
                 colors = SliderDefaults.colors(
                     thumbColor = tint, activeTrackColor = tint,
                     inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha=if(isLight) 0.3f else 0.5f),
-                    activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent,
-                ),
-            )
+                    activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent))
             // Long-press revert icon
             Box(
                 Modifier
@@ -1024,7 +975,6 @@ private fun FreqLockRow(locked: Boolean, onToggle: () -> Unit) {
         Switch(checked = locked, onCheckedChange = { onToggle() },
             colors = SwitchDefaults.colors(
                 checkedThumbColor  = MaterialTheme.colorScheme.error,
-                checkedTrackColor  = MaterialTheme.colorScheme.errorContainer,
-            ))
+                checkedTrackColor  = MaterialTheme.colorScheme.errorContainer))
     }
 }
