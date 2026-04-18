@@ -211,6 +211,12 @@ fun TuningScreen(
                         onSet       = onSet,
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
+                        littleFreqLocked = littleFreqLocked,
+                        bigFreqLocked = bigFreqLocked,
+                        gpuFreqLocked = gpuFreqLocked,
+                        onToggleLittleLock = onToggleLittleLock,
+                        onToggleBigLock = onToggleBigLock,
+                        onToggleGpuLock = onToggleGpuLock,
                         onDismissRequest = { if (targetExpandedId == id) targetExpandedId = null },
                         onFullyClosed    = { activeOverlayIds.remove(id) })
                 }
@@ -239,6 +245,12 @@ private fun HeroOverlay(
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
     onToggleCore: (Int) -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
     onDismissRequest: () -> Unit,
     onFullyClosed: () -> Unit) {
     val density = LocalDensity.current
@@ -340,14 +352,17 @@ private fun HeroOverlay(
                 Column(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, littleFreqLocked, bigFreqLocked, gpuFreqLocked, onToggleLittleLock, onToggleBigLock, onToggleGpuLock, onSet, onProfileSelected, onToggleCore,
-    littleFreqLocked = littleFreqLocked,
-    bigFreqLocked = bigFreqLocked,
-    gpuFreqLocked = gpuFreqLocked,
-    onToggleLittleLock = onToggleLittleLock,
-    onToggleBigLock = onToggleBigLock,
-    onToggleGpuLock = onToggleGpuLock
-)
+                    SectionContent(
+                        id = sectionId, config = config, sconfig = sconfig,
+                        coreStates = coreStates, perCoreFreqMhz = perCoreFreqMhz,
+                        availFreqsL = availFreqsL, availFreqsB = availFreqsB, availFreqsGpu = availFreqsGpu,
+                        liveNodes = liveNodes, nodeDefaults = nodeDefaults,
+                        speedTestState = speedTestState, entropyLevel = entropyLevel,
+                        onRunSpeedTest = onRunSpeedTest, onSet = onSet,
+                        onProfileSelected = onProfileSelected, onToggleCore = onToggleCore,
+                        littleFreqLocked = littleFreqLocked, bigFreqLocked = bigFreqLocked, gpuFreqLocked = gpuFreqLocked,
+                        onToggleLittleLock = onToggleLittleLock, onToggleBigLock = onToggleBigLock, onToggleGpuLock = onToggleGpuLock
+                    )
                     Spacer(Modifier.height(40.dp))
                 }
             }
