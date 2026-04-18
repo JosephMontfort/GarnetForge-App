@@ -12,55 +12,63 @@ object ScriptManager {
     private val VERSION_FILE = "$INSTALL_DIR/.app_version"
     private val DEFAULTS_FILE= "$INSTALL_DIR/defaults.prop"
 
-    suspend fun ensureInstalled(ctx: Context, appVersionCode: Int): Boolean =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                // Step 1: Bootstrap — ensure app data dir exists with correct permissions
-                val bootstrapDest = "/data/adb/garnetforge_bootstrap.sh"
-                copyAsset(ctx, "scripts/bootstrap.sh", bootstrapDest)
-                Shell.cmd("chmod 755 $bootstrapDest; sh $bootstrapDest").exec()
+    data class Progress(val step: Int, val total: Int, val message: String)
 
-                // Step 2: Create install dir (in case bootstrap didn't run as expected)
-                Shell.cmd("mkdir -p $INSTALL_DIR").exec()
+    suspend fun ensureInstalled(
+        ctx: Context,
+        appVersionCode: Int,
+        onProgress: (Progress) -> Unit = {},
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val nodesExist = Shell.cmd("[ -s $INSTALL_DIR/nodes.prop ] && echo y")
+                .exec().out.firstOrNull() == "y"
+            val installedVersion = Shell.cmd("cat $VERSION_FILE 2>/dev/null")
+                .exec().out.firstOrNull()?.trim()?.toIntOrNull() ?: 0
+            val needsUpdate = installedVersion < appVersionCode
+            val isFirstLaunch = !nodesExist || needsUpdate
 
-                val installedVersion = Shell.cmd("cat $VERSION_FILE 2>/dev/null")
-                    .exec().out.firstOrNull()?.trim()?.toIntOrNull() ?: 0
-                val needsUpdate = installedVersion < appVersionCode
-                val defaultsExist = Shell.cmd("[ -f $DEFAULTS_FILE ] && echo y")
-                    .exec().out.firstOrNull() == "y"
+            val totalSteps = if (isFirstLaunch) 7 else 3
 
-                // Copy all scripts
-                SCRIPTS.forEach { script ->
-                    copyAsset(ctx, "scripts/$script", "$INSTALL_DIR/$script")
-                    Shell.cmd("chmod 755 $INSTALL_DIR/$script").exec()
-                }
+            onProgress(Progress(1, totalSteps, "Setting up directories…"))
+            val bootstrapDest = "/data/adb/garnetforge_bootstrap.sh"
+            copyAsset(ctx, "scripts/bootstrap.sh", bootstrapDest)
+            Shell.cmd("chmod 755 $bootstrapDest; sh $bootstrapDest").exec()
+            Shell.cmd("mkdir -p $INSTALL_DIR").exec()
 
-                // Copy default config only if missing
-                val configExists = Shell.cmd("[ -f $INSTALL_DIR/config.prop ] && echo y")
-                    .exec().out.firstOrNull() == "y"
-                if (!configExists) {
-                    copyAsset(ctx, "scripts/config.prop", "$INSTALL_DIR/config.prop")
-                }
+            onProgress(Progress(2, totalSteps, "Installing scripts…"))
+            val defaultsExist = Shell.cmd("[ -f $DEFAULTS_FILE ] && echo y")
+                .exec().out.firstOrNull() == "y"
+            SCRIPTS.forEach { script ->
+                copyAsset(ctx, "scripts/$script", "$INSTALL_DIR/$script")
+                Shell.cmd("chmod 755 $INSTALL_DIR/$script").exec()
+            }
 
-                // Run detect_nodes only when missing, version changed, or forced by reboot flag
-                val nodesExist = Shell.cmd("[ -s $INSTALL_DIR/nodes.prop ] && echo y")
-                    .exec().out.firstOrNull() == "y"
-                if (!nodesExist || needsUpdate) {
-                    Shell.cmd("sh $INSTALL_DIR/detect_nodes.sh").exec()
-                    android.util.Log.i("GarnetForge", "Node detection complete")
-                } else {
-                    android.util.Log.i("GarnetForge", "Skipping node detection — nodes.prop exists")
-                }
+            onProgress(Progress(3, totalSteps, "Checking configuration…"))
+            val configExists = Shell.cmd("[ -f $INSTALL_DIR/config.prop ] && echo y")
+                .exec().out.firstOrNull() == "y"
+            if (!configExists) copyAsset(ctx, "scripts/config.prop", "$INSTALL_DIR/config.prop")
 
-                // detect_defaults only on first install or if defaults.prop missing
+            if (isFirstLaunch) {
+                onProgress(Progress(4, totalSteps, "Detecting kernel nodes — first launch takes a moment…"))
+                Shell.cmd("sh $INSTALL_DIR/detect_nodes.sh").exec()
+                android.util.Log.i("GarnetForge", "Node detection complete")
+
+                onProgress(Progress(5, totalSteps, "Reading default values…"))
                 if (!defaultsExist || needsUpdate) {
                     Shell.cmd("sh $INSTALL_DIR/detect_defaults.sh").exec()
                 }
 
+                onProgress(Progress(6, totalSteps, "Finalizing setup…"))
                 Shell.cmd("printf '%s' '$appVersionCode' > $VERSION_FILE").exec()
-                true
-            }.getOrDefault(false)
-        }
+
+                onProgress(Progress(7, totalSteps, "Ready!"))
+            } else {
+                Shell.cmd("printf '%s' '$appVersionCode' > $VERSION_FILE").exec()
+                onProgress(Progress(3, totalSteps, "Ready!"))
+            }
+            true
+        }.getOrDefault(false)
+    }
 
     private fun copyAsset(ctx: Context, assetPath: String, destPath: String) {
         ctx.assets.open(assetPath).use { input ->

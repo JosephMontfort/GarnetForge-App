@@ -50,6 +50,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _deviceInfo   = MutableStateFlow(DeviceInfo())
     private val _coreStates   = MutableStateFlow(List(8) { true })
     private val _dashboardReady= MutableStateFlow(false)
+    private val _installProgress = MutableStateFlow<dev.garnetforge.app.root.ScriptManager.Progress?>(null)
+    val installProgress: StateFlow<dev.garnetforge.app.root.ScriptManager.Progress?> = _installProgress.asStateFlow()
     val dashboardReady = _dashboardReady.asStateFlow()
     private val _liveNodes    = MutableStateFlow(dev.garnetforge.app.data.model.LiveNodeValues())
     private val _nodeDefaults = MutableStateFlow(dev.garnetforge.app.data.model.NodeDefaults())
@@ -97,7 +99,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (Build.VERSION.SDK_INT >= 28) app.packageManager.getPackageInfo(app.packageName, 0).longVersionCode.toInt()
             else @Suppress("DEPRECATION") app.packageManager.getPackageInfo(app.packageName, 0).versionCode
         }.getOrDefault(1)
-        dev.garnetforge.app.root.ScriptManager.ensureInstalled(app, vc)
+        dev.garnetforge.app.root.ScriptManager.ensureInstalled(app, vc) { p -> _installProgress.value = p }
+        _installProgress.value = null
         refreshConfig()
         refreshSconfig()
         refreshCoreStates()
@@ -288,8 +291,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val speedTestState: StateFlow<SpeedTestState> = _speedTestState.asStateFlow()
 
     fun runSpeedTest() = viewModelScope.launch {
-        _speedTestState.value = SpeedTestState.Running
-        val result = runCatching { sysfsRepo.runSpeedTest() }
+        _speedTestState.value = SpeedTestState.Running()
+        val result = runCatching {
+            sysfsRepo.runSpeedTest { phase, frac, mbps ->
+                _speedTestState.value = SpeedTestState.Running(phase, frac, mbps)
+            }
+        }
         _speedTestState.value = result.fold(
             { (dl, ul) -> SpeedTestState.Done(dl, ul) },
             { SpeedTestState.Error(it.message ?: "Failed") }

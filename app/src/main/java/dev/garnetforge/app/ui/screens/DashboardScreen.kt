@@ -17,10 +17,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import dev.garnetforge.app.data.model.*
-import android.net.Uri
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.TransformOrigin
+import kotlinx.coroutines.launch
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
 import java.time.LocalTime
@@ -185,50 +189,67 @@ private fun StatChip(icon: ImageVector, value: String, label: String, color: Col
 
 @Composable
 private fun BroomChip(onClick: () -> Unit, modifier: Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    // Compose-native animated trash icon — no SurfaceView, no black background
+    var isAnimating by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-    val mp = remember {
-        try {
-            android.media.MediaPlayer().also { player ->
-                val afd = context.assets.openFd("trash_clean.webm")
-                player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                player.isLooping = false
-                player.prepare()
-            }
-        } catch (_: Exception) { null }
-    }
-    DisposableEffect(Unit) { onDispose { mp?.release() } }
+    // Lid rotation: flips up on click
+    val lidAngle by animateFloatAsState(
+        targetValue = if (isAnimating) -45f else 0f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
+        label = "lid"
+    )
+    // Body scale: slight squeeze then expand
+    val bodyScale by animateFloatAsState(
+        targetValue = if (isAnimating) 0.85f else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow),
+        label = "body"
+    )
+    // Whole chip bounce
+    val chipScale by animateFloatAsState(
+        targetValue = if (isAnimating) 1.08f else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
+        label = "chip"
+    )
 
-    Box(modifier.clip(RoundedCornerShape(16.dp))
+    Box(modifier.graphicsLayer(scaleX = chipScale, scaleY = chipScale)
+        .clip(RoundedCornerShape(16.dp))
         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
         .background(MaterialTheme.colorScheme.surfaceVariant)
         .clickable {
-            mp?.let { player -> if (!player.isPlaying) { player.seekTo(0); player.start() } }
-            onClick()
-        }, contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(42.dp)) {
-                AndroidView(
-                    factory = { ctx ->
-                        android.view.SurfaceView(ctx).also { sv ->
-                            sv.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                            sv.setZOrderOnTop(true)
-                            sv.holder.setFormat(android.graphics.PixelFormat.TRANSPARENT)
-                            sv.holder.addCallback(object : android.view.SurfaceHolder.Callback {
-                                override fun surfaceCreated(h: android.view.SurfaceHolder) {
-                                    mp?.setSurface(h.surface)
-                                }
-                                override fun surfaceChanged(h: android.view.SurfaceHolder, f: Int, w: Int, ht: Int) {}
-                                override fun surfaceDestroyed(h: android.view.SurfaceHolder) { mp?.setSurface(null) }
-                            })
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+            if (!isAnimating) {
+                isAnimating = true
+                scope.launch {
+                    kotlinx.coroutines.delay(600)
+                    isAnimating = false
+                }
+                onClick()
             }
-            Text("Clear", style = MaterialTheme.typography.titleSmall, color = PurpleLight, fontWeight = FontWeight.ExtraBold)
-            Text("RAM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }, contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(vertical = 14.dp, horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            // Custom animated trash icon using Canvas
+            Box(Modifier.size(22.dp), contentAlignment = Alignment.TopCenter) {
+                // Lid
+                Box(Modifier
+                    .size(16.dp, 4.dp)
+                    .offset(y = (-1).dp)
+                    .graphicsLayer(rotationZ = lidAngle, transformOrigin = TransformOrigin(0.5f, 1f))
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(PurpleLight))
+                // Body
+                Box(Modifier
+                    .size(14.dp, 16.dp)
+                    .align(Alignment.BottomCenter)
+                    .graphicsLayer(scaleY = bodyScale, transformOrigin = TransformOrigin(0.5f, 0f))
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(PurpleLight.copy(0.85f)))
+            }
+            Spacer(Modifier.height(4.dp))
+            Text("Clear", style = MaterialTheme.typography.titleMedium,
+                color = PurpleLight, fontWeight = FontWeight.ExtraBold)
+            Text("RAM", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

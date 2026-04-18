@@ -32,6 +32,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import dev.garnetforge.app.SpeedTestState
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlin.math.cos
+import kotlin.math.sin
 import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
@@ -59,7 +67,8 @@ private val SECTIONS = listOf(
     TuningSection("memory",     Icons.Default.Storage,      "Memory"),
     TuningSection("thermal",    Icons.Default.Thermostat,   "Thermal"),
     TuningSection("io",         Icons.Default.Tune,         "I/O"),
-    TuningSection("network",    Icons.Default.NetworkCheck, "Network"))
+    TuningSection("network",    Icons.Default.NetworkCheck, "Network"),
+)
 
 // ── Chip position capture ─────────────────────────────────────────────
 private data class ChipBounds(val offset: IntOffset, val size: IntSize)
@@ -79,16 +88,16 @@ fun TuningScreen(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit = {},
-    blurEnabled: Boolean,
-    onSet: (String, String) -> Unit,
-    onProfileSelected: (ThermalProfile) -> Unit,
-    onToggleCore: (Int) -> Unit,
     littleFreqLocked: Boolean = false,
     bigFreqLocked: Boolean = false,
     gpuFreqLocked: Boolean = false,
     onToggleLittleLock: () -> Unit = {},
     onToggleBigLock: () -> Unit = {},
-    onToggleGpuLock: () -> Unit = {}
+    onToggleGpuLock: () -> Unit = {},
+    blurEnabled: Boolean,
+    onSet: (String, String) -> Unit,
+    onProfileSelected: (ThermalProfile) -> Unit,
+    onToggleCore: (Int) -> Unit,
 ) {
     val density = LocalDensity.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
@@ -161,7 +170,8 @@ fun TuningScreen(
                             }
                             targetExpandedId = section.id
                         },
-                    contentAlignment = Alignment.Center) {
+                    contentAlignment = Alignment.Center,
+                ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally, 
                         verticalArrangement = Arrangement.Center,
@@ -208,17 +218,18 @@ fun TuningScreen(
                         speedTestState  = speedTestState,
                         entropyLevel    = entropyLevel,
                         onRunSpeedTest  = onRunSpeedTest,
+                        littleFreqLocked= littleFreqLocked,
+                        bigFreqLocked   = bigFreqLocked,
+                        gpuFreqLocked   = gpuFreqLocked,
+                        onToggleLittleLock = onToggleLittleLock,
+                        onToggleBigLock    = onToggleBigLock,
+                        onToggleGpuLock    = onToggleGpuLock,
                         onSet       = onSet,
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
-                        littleFreqLocked = littleFreqLocked,
-                        bigFreqLocked = bigFreqLocked,
-                        gpuFreqLocked = gpuFreqLocked,
-                        onToggleLittleLock = onToggleLittleLock,
-                        onToggleBigLock = onToggleBigLock,
-                        onToggleGpuLock = onToggleGpuLock,
                         onDismissRequest = { if (targetExpandedId == id) targetExpandedId = null },
-                        onFullyClosed    = { activeOverlayIds.remove(id) })
+                        onFullyClosed    = { activeOverlayIds.remove(id) },
+                    )
                 }
             }
         }
@@ -242,17 +253,24 @@ private fun HeroOverlay(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
-    onSet: (String, String) -> Unit,
-    onProfileSelected: (ThermalProfile) -> Unit,
-    onToggleCore: (Int) -> Unit,
     littleFreqLocked: Boolean,
     bigFreqLocked: Boolean,
     gpuFreqLocked: Boolean,
     onToggleLittleLock: () -> Unit,
     onToggleBigLock: () -> Unit,
     onToggleGpuLock: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
+    onSet: (String, String) -> Unit,
+    onProfileSelected: (ThermalProfile) -> Unit,
+    onToggleCore: (Int) -> Unit,
     onDismissRequest: () -> Unit,
-    onFullyClosed: () -> Unit) {
+    onFullyClosed: () -> Unit,
+) {
     val density = LocalDensity.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     
@@ -285,11 +303,13 @@ private fun HeroOverlay(
 
     val snapTranslateY by animateFloatAsState(
         targetValue = if (isDragging) dragY else 0f,
-        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapY")
+        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapY",
+    )
     val dragScale = if (isDragging) (1f - (kotlin.math.abs(dragY) / 3000f)).coerceIn(0.85f, 1f) else 1f
     val snapScale by animateFloatAsState(
         targetValue = dragScale,
-        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapScale")
+        animationSpec = if (isDragging) snap() else spring(0.85f, Spring.StiffnessMediumLow), label = "snapScale",
+    )
 
     LaunchedEffect(transition.currentState, internalExpanded) {
         if (!internalExpanded && transition.currentState == false) {
@@ -351,18 +371,9 @@ private fun HeroOverlay(
                 }
                 Column(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    SectionContent(
-                        id = sectionId, config = config, sconfig = sconfig,
-                        coreStates = coreStates, perCoreFreqMhz = perCoreFreqMhz,
-                        availFreqsL = availFreqsL, availFreqsB = availFreqsB, availFreqsGpu = availFreqsGpu,
-                        liveNodes = liveNodes, nodeDefaults = nodeDefaults,
-                        speedTestState = speedTestState, entropyLevel = entropyLevel,
-                        onRunSpeedTest = onRunSpeedTest, onSet = onSet,
-                        onProfileSelected = onProfileSelected, onToggleCore = onToggleCore,
-                        littleFreqLocked = littleFreqLocked, bigFreqLocked = bigFreqLocked, gpuFreqLocked = gpuFreqLocked,
-                        onToggleLittleLock = onToggleLittleLock, onToggleBigLock = onToggleBigLock, onToggleGpuLock = onToggleGpuLock
-                    )
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, littleFreqLocked, bigFreqLocked, gpuFreqLocked, onToggleLittleLock, onToggleBigLock, onToggleGpuLock, onSet, onProfileSelected, onToggleCore)
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -374,7 +385,8 @@ private fun HeroOverlay(
                 .offset { IntOffset(0, 0) }
                 .size(
                     width  = with(density) { animWidth.toDp() },
-                    height = with(density) { animHeight.toDp() })
+                    height = with(density) { animHeight.toDp() },
+                )
                 .graphicsLayer {
                     this.rotationY       = rotationY
                     this.cameraDistance  = 12f * density.density
@@ -435,7 +447,8 @@ private fun HeroOverlay(
                     .offset { IntOffset(left.toInt(), (top + snapTranslateY).toInt()) }
                     .size(
                         width  = with(density) { animWidth.toDp() },
-                        height = with(density) { animHeight.toDp() })
+                        height = with(density) { animHeight.toDp() },
+                    )
                     .graphicsLayer(
                         scaleX = snapScale,
                         scaleY = snapScale,
@@ -454,7 +467,8 @@ private fun HeroOverlay(
                                 if (kotlin.math.abs(dragY) > DISMISS_THRESHOLD) triggerDismiss() else dragY = 0f
                             },
                             onDragCancel = { isDragging = false; dragY = 0f },
-                            onVerticalDrag = { _, delta -> dragY = (dragY + delta).coerceIn(-fullH, fullH) })
+                            onVerticalDrag = { _, delta -> dragY = (dragY + delta).coerceIn(-fullH, fullH) },
+                        )
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -517,14 +531,20 @@ private fun SectionContent(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
     onSet: (String,String)->Unit,
     onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
-    littleFreqLocked: Boolean = false,
-    bigFreqLocked: Boolean = false,
-    gpuFreqLocked: Boolean = false,
-    onToggleLittleLock: () -> Unit = {},
-    onToggleBigLock: () -> Unit = {},
-    onToggleGpuLock: () -> Unit = {}
 ) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     val tRed    = if (isLight) GarnetRed    else GarnetLight
@@ -551,11 +571,13 @@ private fun SectionContent(
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
                 onRevert = { minI = 0; onSet("cpu_policy0_min", freqL.first().toString()) },
-                info = "Minimum allowed frequency. Lower = better idle battery life.") { onSet("cpu_policy0_min", freqL[minI].toString()) }
+                info = "Minimum allowed frequency. Lower = better idle battery life.",
+            ) { onSet("cpu_policy0_min", freqL[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
                 onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) },
-                info = "Maximum allowed frequency. Limit to save battery or thermals.") { onSet("cpu_policy0_max", freqL[maxI].toString()) }
+                info = "Maximum allowed frequency. Limit to save battery or thermals.",
+            ) { onSet("cpu_policy0_max", freqL[maxI].toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(littleFreqLocked) { onToggleLittleLock() }
         }
@@ -574,11 +596,13 @@ private fun SectionContent(
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqB.lastIndex.toFloat(), (freqB.size-2).coerceAtLeast(0),
                 "${freqB.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
                 onRevert = { minI = 0; onSet("cpu_policy4_min", freqB.first().toString()) },
-                info = "Minimum allowed frequency for big cores.") { onSet("cpu_policy4_min", freqB[minI].toString()) }
+                info = "Minimum allowed frequency for big cores.",
+            ) { onSet("cpu_policy4_min", freqB[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqB.lastIndex.toFloat(), (freqB.size-2).coerceAtLeast(0),
                 "${freqB.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
                 onRevert = { maxI = freqB.lastIndex; onSet("cpu_policy4_max", freqB.last().toString()) },
-                info = "Maximum frequency for big cores. Limit for thermals.") { onSet("cpu_policy4_max", freqB[maxI].toString()) }
+                info = "Maximum frequency for big cores. Limit for thermals.",
+            ) { onSet("cpu_policy4_max", freqB[maxI].toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(bigFreqLocked) { onToggleBigLock() }
         }
@@ -615,21 +639,25 @@ private fun SectionContent(
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqG.lastIndex.toFloat(), (freqG.size-2).coerceAtLeast(0),
                 "${freqG.getOrElse(minI){0}} MHz", tPurple, { minI=it.toInt() },
                 onRevert = { minI = 0; onSet("gpu_min", freqG.first().toString()) },
-                info = "Minimum GPU frequency. Higher = smoother at cost of battery.") { onSet("gpu_min", freqG[minI].toString()) }
+                info = "Minimum GPU frequency. Higher = smoother at cost of battery.",
+            ) { onSet("gpu_min", freqG[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqG.lastIndex.toFloat(), (freqG.size-2).coerceAtLeast(0),
                 "${freqG.getOrElse(maxI){0}} MHz", tPurple, { maxI=it.toInt() },
                 onRevert = { maxI = freqG.lastIndex; onSet("gpu_max", freqG.last().toString()) },
-                info = "Maximum GPU frequency. Limit for thermals during gaming.") { onSet("gpu_max", freqG[maxI].toString()) }
+                info = "Maximum GPU frequency. Limit for thermals during gaming.",
+            ) { onSet("gpu_max", freqG[maxI].toString()) }
             // Power level — continuous 0-8
             RevertableSlider("Power Level", pl.toFloat(), 0f, 8f, 0,
                 "$pl (0=max perf, 8=min)", tPurple, { pl=it.toInt() },
                 onRevert = { pl = 0; onSet("gpu_pwrlevel", "0") },
-                info = "GPU power level override. 0 = max performance, 8 = minimum power. Writes /sys/class/kgsl/kgsl-3d0/pwrlevel.") { onSet("gpu_pwrlevel", pl.toString()) }
+                info = "GPU power level override. 0 = max performance, 8 = minimum power. Writes /sys/class/kgsl/kgsl-3d0/pwrlevel.",
+            ) { onSet("gpu_pwrlevel", pl.toString()) }
             // Idle timer — continuous 1-1000ms
             RevertableSlider("Idle Timer", idleTimer.toFloat(), 1f, 1000f, 0,
                 "$idleTimer ms", tPurple, { idleTimer=it.toInt() },
                 onRevert = { idleTimer = nodeDefaults.gpuIdleTimer; onSet("gpu_idle_timer", nodeDefaults.gpuIdleTimer.toString()) },
-                info = "GPU goes idle after this many ms of no work. Lower = faster idle, more battery saving.") { onSet("gpu_idle_timer", idleTimer.toString()) }
+                info = "GPU goes idle after this many ms of no work. Lower = faster idle, more battery saving.",
+            ) { onSet("gpu_idle_timer", idleTimer.toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(gpuFreqLocked) { onToggleGpuLock() }
         }
@@ -651,23 +679,28 @@ private fun SectionContent(
             RevertableSlider("Swappiness", swap.toFloat(), 0f, 200f, 0,
                 "$swap", tBlue, { swap = it.toInt() },
                 onRevert = { swap = nodeDefaults.vmSwappiness; onSet("vm_swappiness", nodeDefaults.vmSwappiness.toString()) },
-                info = "How aggressively kernel swaps. 0 = prefer RAM, 100 = balanced, 200 = max swap.") { onSet("vm_swappiness", swap.toString()) }
+                info = "How aggressively kernel swaps. 0 = prefer RAM, 100 = balanced, 200 = max swap.",
+            ) { onSet("vm_swappiness", swap.toString()) }
             RevertableSlider("Dirty Ratio", dirty.toFloat(), 1f, 90f, 0,
                 "$dirty %", tBlue, { dirty = it.toInt() },
                 onRevert = { dirty = nodeDefaults.vmDirtyRatio; onSet("vm_dirty_ratio", nodeDefaults.vmDirtyRatio.toString()) },
-                info = "Max dirty memory % before process blocks to write.") { onSet("vm_dirty_ratio", dirty.toString()) }
+                info = "Max dirty memory % before process blocks to write.",
+            ) { onSet("vm_dirty_ratio", dirty.toString()) }
             RevertableSlider("Dirty BG Ratio", dirtyBg.toFloat(), 1f, 50f, 0,
                 "$dirtyBg %", tBlue, { dirtyBg = it.toInt() },
                 onRevert = { dirtyBg = nodeDefaults.vmDirtyBackgroundRatio; onSet("vm_dirty_background_ratio", nodeDefaults.vmDirtyBackgroundRatio.toString()) },
-                info = "Dirty memory % that triggers background writeback.") { onSet("vm_dirty_background_ratio", dirtyBg.toString()) }
+                info = "Dirty memory % that triggers background writeback.",
+            ) { onSet("vm_dirty_background_ratio", dirtyBg.toString()) }
             RevertableSlider("VFS Cache Pressure", vfs.toFloat(), 10f, 500f, 0,
                 "$vfs", tBlue, { vfs = it.toInt() },
                 onRevert = { vfs = nodeDefaults.vmVfsCachePressure; onSet("vm_vfs_cache_pressure", nodeDefaults.vmVfsCachePressure.toString()) },
-                info = "Tendency to reclaim inode/dentry cache. 100 = kernel default.") { onSet("vm_vfs_cache_pressure", vfs.toString()) }
+                info = "Tendency to reclaim inode/dentry cache. 100 = kernel default.",
+            ) { onSet("vm_vfs_cache_pressure", vfs.toString()) }
             RevertableSlider("ZRAM Size", zI.toFloat(), 0f, 5f, 4,
                 "${listOf(1,2,3,4,6,8)[zI.coerceIn(0,5)]} GB", tBlue, { zI = it.toInt() },
                 onRevert = { zI = 3; onSet("zram_size", ZRAM_B[3].toString()) },
-                info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.") { onSet("zram_size", ZRAM_B[zI].toString()) }
+                info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.",
+            ) { onSet("zram_size", ZRAM_B[zI].toString()) }
             Spacer(Modifier.height(4.dp))
             ChipRowTuning("ZRAM Algorithm", ZRAM_ALGOS, config.zramAlgo,
                 info = "Compression: lz4 = fastest, zstd = best ratio, lzo = balanced.") { onSet("zram_algo", it) }
@@ -712,7 +745,8 @@ private fun SectionContent(
             RevertableSlider("Read-Ahead", readAheadIdx.toFloat(), 0f, READ_AHEAD_VALS.lastIndex.toFloat(), READ_AHEAD_VALS.lastIndex - 1,
                 "${READ_AHEAD_VALS[readAheadIdx]} KB", tCool, { readAheadIdx = it.toInt() },
                 onRevert = { readAheadIdx = READ_AHEAD_VALS.indexOfFirst { it == nodeDefaults.readAheadKb }.coerceAtLeast(0); onSet("read_ahead_kb", nodeDefaults.readAheadKb.toString()) },
-                info = "Pre-fetch buffer per block device. Higher = better sequential read, more RAM.") { onSet("read_ahead_kb", READ_AHEAD_VALS[readAheadIdx].toString()) }
+                info = "Pre-fetch buffer per block device. Higher = better sequential read, more RAM.",
+            ) { onSet("read_ahead_kb", READ_AHEAD_VALS[readAheadIdx].toString()) }
         }
         "network" -> {
             Text("Network", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tBlue)
@@ -728,7 +762,8 @@ private fun SectionContent(
             RevertableSlider("TX Queue Length", rxq.toFloat(), 100f, 10000f, 99,
                 "$rxq", tBlue, { rxq = it.toInt() },
                 onRevert = { rxq = nodeDefaults.netRxqueuelen; onSet("net_rxqueuelen", nodeDefaults.netRxqueuelen.toString()) },
-                info = "Network interface TX queue depth. Higher = better throughput under load.") { onSet("net_rxqueuelen", rxq.toString()) }
+                info = "Network interface TX queue depth. Higher = better throughput under load.",
+            ) { onSet("net_rxqueuelen", rxq.toString()) }
             Spacer(Modifier.height(12.dp))
             NetworkSpeedTestPanel(speedTestState, onSet)
             val isSpeedRunning = speedTestState is SpeedTestState.Running
@@ -747,66 +782,84 @@ private fun SectionContent(
 }
 
 
-// ── Network Speed Test Panel ──────────────────────────────────────────
+
+// ── Professional Speedometer Speed Test Panel ────────────────────────
 @Composable
 private fun NetworkSpeedTestPanel(
     state: SpeedTestState,
-    @Suppress("UNUSED_PARAMETER") onSet: (String, String) -> Unit) {
+    @Suppress("UNUSED_PARAMETER") onSet: (String, String) -> Unit,
+) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    val tBlue   = if (isLight) Color(0xFF0288D1) else ColorBlue
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs   = remember { context.getSharedPreferences("garnet_prefs", 0) }
-    var showWidgetPrompt by remember { mutableStateOf(false) }
+    val tBlue   = if (isLight) androidx.compose.ui.graphics.Color(0xFF0277BD) else ColorBlue
 
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.5f))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (isLight) androidx.compose.ui.graphics.Color(0xFFEDF4FF)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(0.6f)
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Speed Test", style = MaterialTheme.typography.bodyLarge,
+            Text("Speed Test", style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, color = tBlue)
+            when (state) {
+                is SpeedTestState.Running ->
+                    Text(if (state.phase == "download") "↓ Testing Download…" else "↑ Testing Upload…",
+                        style = MaterialTheme.typography.labelSmall, color = tBlue)
+                is SpeedTestState.Done ->
+                    Text("✓ Complete", style = MaterialTheme.typography.labelSmall,
+                        color = androidx.compose.ui.graphics.Color(0xFF43A047))
+                else -> {}
+            }
         }
-        when (state) {
-            is SpeedTestState.Idle ->
-                Text("Tap 'Run Speed Test' to test via Cloudflare.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            is SpeedTestState.Running ->
-                Row(verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(Modifier.size(16.dp), color = tBlue, strokeWidth = 2.dp)
-                    Text("Testing… (~15s)", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            is SpeedTestState.Done -> {
-                Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
-                    SpeedReadout("Download", state.downloadMbps, tBlue, Modifier.weight(1f))
-                    SpeedReadout("Upload",   state.uploadMbps,   tBlue, Modifier.weight(1f))
-                }
-                LaunchedEffect(state) {
-                    val shown = prefs.getBoolean("widget_prompt_shown", false)
-                    if (!shown) { showWidgetPrompt = true; prefs.edit().putBoolean("widget_prompt_shown", true).apply() }
+
+        Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
+            val dlMbps = if (state is SpeedTestState.Done) state.downloadMbps
+                else if (state is SpeedTestState.Running && state.phase == "download") state.currentMbps
+                else 0f
+            val ulMbps = if (state is SpeedTestState.Done) state.uploadMbps
+                else if (state is SpeedTestState.Running && state.phase == "upload") state.currentMbps
+                else 0f
+            val dlFrac = if (state is SpeedTestState.Running && state.phase == "download") state.fraction
+                else if (state is SpeedTestState.Done) 1f else 0f
+            val ulFrac = if (state is SpeedTestState.Running && state.phase == "upload") state.fraction
+                else if (state is SpeedTestState.Done) 1f else 0f
+
+            SpeedometerGauge("Download", dlMbps,
+                if (state is SpeedTestState.Running && state.phase == "download") state.fraction else if (state is SpeedTestState.Done) 1f else 0f,
+                tBlue, "↓", Modifier.weight(1f))
+            SpeedometerGauge("Upload", ulMbps,
+                if (state is SpeedTestState.Running && state.phase == "upload") state.fraction else if (state is SpeedTestState.Done) 1f else 0f,
+                androidx.compose.ui.graphics.Color(0xFF7B1FA2), "↑", Modifier.weight(1f))
+        }
+
+        if (state is SpeedTestState.Running) {
+            LinearProgressIndicator(
+                progress = { state.fraction },
+                modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+                color = tBlue, trackColor = tBlue.copy(0.2f)
+            )
+        }
+
+        if (state is SpeedTestState.Error) {
+            Text("Error: ${state.msg}", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+        }
+        if (state is SpeedTestState.Done) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val prefs = remember { context.getSharedPreferences("garnet_prefs", 0) }
+            var showWidgetPrompt by remember { mutableStateOf(false) }
+            LaunchedEffect(state) {
+                if (!prefs.getBoolean("widget_prompt_shown", false)) {
+                    showWidgetPrompt = true
+                    prefs.edit().putBoolean("widget_prompt_shown", true).apply()
                 }
             }
-            is SpeedTestState.Error ->
-                Text("Error: ${state.msg}", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error)
+            if (showWidgetPrompt) WidgetPrompt(context) { showWidgetPrompt = false }
         }
-        if (showWidgetPrompt) WidgetPrompt(context) { showWidgetPrompt = false }
-    }
-}
-
-@Composable
-private fun SpeedReadout(label: String, mbps: Float, color: Color, modifier: Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(if (mbps < 0) "--" else "%.1f".format(mbps),
-            style = MaterialTheme.typography.titleLarge, color = color, fontWeight = FontWeight.ExtraBold)
-        Text("Mbps", style = MaterialTheme.typography.labelSmall, color = color.copy(0.7f))
-        Text(label, style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -816,7 +869,7 @@ private fun WidgetPrompt(context: android.content.Context, onDismiss: () -> Unit
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.Widgets, null, tint = MaterialTheme.colorScheme.primary) },
         title = { Text("Add Speed Widget?") },
-        text = { Text("Add the GarnetForge speed widget to your home screen for quick network stats.") },
+        text = { Text("Add the speed widget to your home screen for quick network testing without opening the app.") },
         confirmButton = {
             TextButton(onClick = {
                 try {
@@ -824,11 +877,6 @@ private fun WidgetPrompt(context: android.content.Context, onDismiss: () -> Unit
                     val provider = android.content.ComponentName(context, dev.garnetforge.app.ui.widget.SpeedWidget::class.java)
                     if (mgr.isRequestPinAppWidgetSupported) {
                         mgr.requestPinAppWidget(provider, null, null)
-                    } else {
-                        val i = android.content.Intent(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_PICK).apply {
-                            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                        }
-                        context.startActivity(i)
                     }
                 } catch (e: Exception) { android.util.Log.e("GarnetForge", "Widget: ${e.message}") }
                 onDismiss()
@@ -838,144 +886,67 @@ private fun WidgetPrompt(context: android.content.Context, onDismiss: () -> Unit
     )
 }
 
-// ── Live per-core frequency bars ─────────────────────────────────────
 @Composable
-private fun CoreFreqGrid(cores: List<Int>, freqs: List<Int>, maxFreq: Int, color: Color) {
-    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    val trackBg   = if (isLight) Color.Black.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.08f)
-    val barColor  = color
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        cores.chunked(2).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                row.forEach { coreIdx ->
-                    val mhz     = freqs.getOrElse(coreIdx) { 0 }
-                    val frac    = (mhz.toFloat() / maxFreq.toFloat()).coerceIn(0f, 1f)
-                    val animFrac by animateFloatAsState(frac, spring(0.8f, 120f), label = "cf$coreIdx")
-                    val animMhz  by animateIntAsState(mhz, tween(300), label = "cm$coreIdx")
-                    Box(
-                        Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(10.dp)).background(trackBg)
-                    ) {
-                        Box(
-                            Modifier.fillMaxHeight().fillMaxWidth(animFrac)
-                                .background(Brush.horizontalGradient(listOf(barColor.copy(0.45f), barColor)), RoundedCornerShape(10.dp))
-                        )
-                        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                            Text("C$coreIdx",
-                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
-                                color = if (animFrac > 0.4f) Color.White.copy(if (isLight) 0.9f else 1f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(if (mhz == 0) "off" else "$animMhz",
-                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
-                                color = if (animFrac > 0.7f) Color.White.copy(if (isLight) 0.9f else 1f) else barColor)
-                        }
-                    }
+private fun SpeedometerGauge(
+    label: String, mbps: Float, progress: Float,
+    color: androidx.compose.ui.graphics.Color, arrow: String, modifier: Modifier,
+) {
+    val animMbps by animateFloatAsState(mbps.coerceAtLeast(0f), tween(300), label = "mbps")
+    val animSweep by animateFloatAsState(progress * 180f, tween(500), label = "sweep")
+    val density = LocalDensity.current
+
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Arc speedometer
+        Box(Modifier.size(120.dp, 70.dp)) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val cx = size.width / 2f
+                val cy = size.height * 0.88f
+                val radius = size.width * 0.46f
+                val strokeW = with(density) { 12.dp.toPx() }
+
+                // Track arc (180° from left to right, bottom-centered)
+                drawArc(
+                    color = color.copy(alpha = 0.15f),
+                    startAngle = 180f, sweepAngle = 180f, useCenter = false,
+                    topLeft = Offset(cx - radius, cy - radius),
+                    size = Size(radius * 2, radius * 2),
+                    style = Stroke(strokeW, cap = StrokeCap.Round)
+                )
+                // Speed arc
+                if (animSweep > 0f) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            listOf(color.copy(0.5f), color, color.copy(0.9f)),
+                            Offset(cx, cy)
+                        ),
+                        startAngle = 180f, sweepAngle = animSweep.coerceIn(0f, 180f),
+                        useCenter = false,
+                        topLeft = Offset(cx - radius, cy - radius),
+                        size = Size(radius * 2, radius * 2),
+                        style = Stroke(strokeW, cap = StrokeCap.Round)
+                    )
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
+                // Needle tip dot
+                val needleAngle = Math.toRadians((180 + animSweep.coerceIn(0f, 180f)).toDouble())
+                val nx = cx + radius * kotlin.math.cos(needleAngle).toFloat()
+                val ny = cy + radius * kotlin.math.sin(needleAngle).toFloat()
+                drawCircle(color, radius = with(density) { 5.dp.toPx() }, center = Offset(nx, ny))
+            }
+            // Center speed reading
+            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("$arrow ${if (mbps <= 0f) "--" else "%.1f".format(animMbps)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = color, fontWeight = FontWeight.ExtraBold)
+                Text("Mbps", style = MaterialTheme.typography.labelSmall, color = color.copy(0.7f))
             }
         }
-    }
-}
-// ── Slider with long-press revert + info button ───────────────────────
-@Composable
-private fun RevertableSlider(
-    label: String, value: Float, min: Float, max: Float, steps: Int,
-    display: String, tint: Color, onDrag: (Float)->Unit,
-    onRevert: () -> Unit,
-    info: String,
-    onCommit: ()->Unit) {
-    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    var showInfo by remember { mutableStateOf(false) }
-    Column {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            // Label + info button
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
-                Text(label, style=MaterialTheme.typography.bodyLarge, fontWeight=FontWeight.Medium, color=MaterialTheme.colorScheme.onSurface)
-                Box(
-                    Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
-                        .clickable { showInfo = !showInfo },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("i", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-                }
-            }
-            AnimatedContent(display, label="dv",
-                transitionSpec={ (slideInVertically{-it}+fadeIn()).togetherWith(slideOutVertically{it}+fadeOut()) }
-            ) { Text(it, style=MaterialTheme.typography.bodyMedium, color=tint, fontWeight=FontWeight.Bold) }
-        }
-        AnimatedVisibility(showInfo, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            Box(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isLight) Color(0xFFf0f4f8) else Color(0xFF1a1a2e))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(info, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Slider(
-                value = value, onValueChange = onDrag,
-                valueRange = min..max, steps = steps,
-                onValueChangeFinished = onCommit,
-                modifier = Modifier.weight(1f),
-                colors = SliderDefaults.colors(
-                    thumbColor = tint, activeTrackColor = tint,
-                    inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha=if(isLight) 0.3f else 0.5f),
-                    activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent))
-            // Long-press revert icon
-            Box(
-                Modifier
-                    .size(30.dp)
-                    .clip(CircleShape)
-                    .combinedClickable(onClick = {}, onLongClick = onRevert)
-                    .background(tint.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Refresh, "Revert to default", tint = tint, modifier = Modifier.size(14.dp))
-            }
-        }
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-// ── Chip row with info button ─────────────────────────────────────────
-@Composable
-private fun ChipRowTuning(label: String, opts: List<String>, sel: String, info: String = "", onSel: (String)->Unit) {
-    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    var showInfo by remember { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style=MaterialTheme.typography.bodyLarge, color=MaterialTheme.colorScheme.onSurface)
-        if (info.isNotEmpty()) {
-            Box(
-                Modifier
-                    .size(16.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
-                    .clickable { showInfo = !showInfo },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("i", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-    Column(Modifier.animateContentSize()) {
-        AnimatedVisibility(showInfo, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            Box(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isLight) Color(0xFFf0f4f8) else Color(0xFF1a1a2e))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(info, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
-            opts.forEach { o -> ProfileChip(o, o==sel) { onSel(o) } }
-        }
-    }
-}
 
 // ── Frequency lock toggle ─────────────────────────────────────────────
 @Composable
@@ -1005,6 +976,7 @@ private fun FreqLockRow(locked: Boolean, onToggle: () -> Unit) {
         Switch(checked = locked, onCheckedChange = { onToggle() },
             colors = SwitchDefaults.colors(
                 checkedThumbColor  = MaterialTheme.colorScheme.error,
-                checkedTrackColor  = MaterialTheme.colorScheme.errorContainer))
+                checkedTrackColor  = MaterialTheme.colorScheme.errorContainer,
+            ))
     }
 }

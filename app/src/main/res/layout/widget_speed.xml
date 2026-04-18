@@ -3,20 +3,22 @@
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical" android:gravity="center"
     android:background="@drawable/widget_bg" android:padding="10dp">
-    <TextView android:id="@+id/widget_title"
-        android:layout_width="wrap_content" android:layout_height="wrap_content"
+
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:text="GarnetForge" android:textColor="#ffe74c3c"
         android:textSize="10sp" android:textStyle="bold" android:letterSpacing="0.1"/>
+
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="horizontal" android:layout_marginTop="4dp" android:gravity="center">
-        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+        <LinearLayout android:id="@+id/widget_dl_container"
+            android:layout_width="0dp" android:layout_height="wrap_content"
             android:layout_weight="1" android:orientation="vertical" android:gravity="center">
             <TextView android:id="@+id/widget_dl"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="--" android:textColor="#ffffff"
-                android:textSize="16sp" android:textStyle="bold"/>
+                android:textSize="18sp" android:textStyle="bold"/>
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="↓ Down" android:textColor="#aaffffff" android:textSize="9sp"/>
+                android:text="↓ Mbps" android:textColor="#aaffffff" android:textSize="9sp"/>
         </LinearLayout>
         <View android:layout_width="1dp" android:layout_height="28dp"
               android:background="#33ffffff" android:layout_marginHorizontal="4dp"/>
@@ -25,13 +27,25 @@
             <TextView android:id="@+id/widget_ul"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="--" android:textColor="#ffe0e0"
-                android:textSize="16sp" android:textStyle="bold"/>
+                android:textSize="18sp" android:textStyle="bold"/>
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="↑ Up" android:textColor="#aaffffff" android:textSize="9sp"/>
+                android:text="↑ Mbps" android:textColor="#aaffffff" android:textSize="9sp"/>
         </LinearLayout>
     </LinearLayout>
+
+    <!-- Run button -->
+    <TextView android:id="@+id/widget_run_btn"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="#33e74c3c"
+        android:gravity="center"
+        android:padding="4dp"
+        android:text="▶ Test Speed"
+        android:textColor="#ffe74c3c"
+        android:textSize="9sp" android:textStyle="bold"/>
+
     <TextView android:id="@+id/widget_updated"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:text="Tap to test" android:textColor="#66ffffff"
-        android:textSize="8sp" android:layout_marginTop="3dp"/>
+        android:text="Tap to test" android:textColor="#55ffffff"
+        android:textSize="8sp" android:layout_marginTop="2dp"/>
 </LinearLayout>

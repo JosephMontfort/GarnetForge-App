@@ -56,7 +56,6 @@ fun IntelligenceScreen(
     onSaveProfile: (String, AppProfile?) -> Unit,
     onSavePreset: (ProfilePreset) -> Unit,
     onDeletePreset: (String) -> Unit,
-    onBoostEntropy: () -> Unit = {},
 ) {
     var query        by remember { mutableStateOf("") }
     var filter       by remember { mutableStateOf(AppFilter.ALL) }
@@ -146,20 +145,7 @@ fun IntelligenceScreen(
                     LabeledSwitch("Per-App Profiles",
                         "Apply custom CPU/GPU/thermal/core profiles per app. Requires Usage Access.",
                         config.perAppThermal) { onSet("per_app_thermal", if (it) "1" else "0") }
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
-                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Entropy Boost", style=MaterialTheme.typography.bodyLarge, fontWeight=FontWeight.Medium)
-                            Text("Feeds /dev/hwrng into entropy pool for stronger random number generation",
-                                style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        FilledTonalButton(onClick = onBoostEntropy,
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                            Icon(Icons.Default.Bolt, null, modifier=Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Boost")
-                        }
-                    }
+
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -799,7 +785,10 @@ private fun ScreenOffCustomiser(config: GarnetConfig, onSet: (String, String) ->
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement   = Arrangement.spacedBy(6.dp)) {
             listOf(0 to "No change", 295 to "295 MHz", 345 to "345 MHz",
-                   500 to "500 MHz", 650 to "650 MHz").forEach { (mhz, lbl) ->
+                   500 to "500 MHz", 600 to "600 MHz",
+                   650 to "650 MHz", 734 to "734 MHz",
+                   816 to "816 MHz", 875 to "875 MHz",
+                   940 to "940 MHz").forEach { (mhz, lbl) ->
                 FilterChip(
                     selected = config.screenOffGpuMaxMhz == mhz,
                     onClick  = { onSet("screen_off_gpu_max_mhz", mhz.toString()) },

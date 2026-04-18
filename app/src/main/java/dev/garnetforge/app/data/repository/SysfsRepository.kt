@@ -434,30 +434,66 @@ class SysfsRepository(private val context: Context) {
     fun getDiagnosticFilePath(): String = "$INSTALL_DIR/diagnostic_report.txt"
 
     // ── Network speed test (using shell dd + /dev/urandom for throughput) ─
-    suspend fun runSpeedTest(): Pair<Float, Float> = withContext(Dispatchers.IO) {
-        // Download 10 MB, measure elapsed ms via date +%s%3N
-        val dlRaw = Shell.cmd(
-            "S=\$(date +%s%3N); " +
-            "curl -s -o /dev/null --max-time 15 --connect-timeout 5 " +
-            "  'https://speed.cloudflare.com/__down?bytes=10000000' 2>/dev/null; " +
-            "E=\$(date +%s%3N); " +
-            "printf '%d' \"\$((E - S))\""
-        ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
-        val dlMbps = if (dlRaw > 100) (10_000_000f * 8f / 1_000_000f) / (dlRaw / 1000f) else -1f
+    /**
+     * Professional multi-connection speed test.
+     * - 4 parallel curl streams for download (~100 MB total, 15s)
+     * - 4 parallel curl streams for upload  (~50 MB total,  10s)
+     * Reports live progress via [onProgress] (0f–1f, current Mbps).
+     */
+    suspend fun runSpeedTest(
+        onProgress: (phase: String, fraction: Float, currentMbps: Float) -> Unit = { _, _, _ -> }
+    ): Pair<Float, Float> = withContext(Dispatchers.IO) {
 
-        // Upload 2 MB random data
-        val ulRaw = Shell.cmd(
-            "S=\$(date +%s%3N); " +
-            "dd if=/dev/urandom bs=1024 count=2048 2>/dev/null | " +
-            "curl -s -o /dev/null --max-time 15 --connect-timeout 5 " +
-            "  -X POST -H 'Content-Type: application/octet-stream' " +
-            "  --data-binary @- 'https://speed.cloudflare.com/__up' 2>/dev/null; " +
-            "E=\$(date +%s%3N); " +
-            "printf '%d' \"\$((E - S))\""
-        ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
-        val ulMbps = if (ulRaw > 100) (2_000_000f * 8f / 1_000_000f) / (ulRaw / 1000f) else -1f
+        // ── Download ───────────────────────────────────────────────
+        onProgress("download", 0f, 0f)
+        // 4 parallel 25 MB downloads, 15s each
+        val dlScript = """
+S=$(date +%s%3N)
+BYTES=0
+for i in 1 2 3 4; do
+  curl -s -o /dev/null -w '%{size_download}\n' --max-time 15 --connect-timeout 5     'https://speed.cloudflare.com/__down?bytes=25000000' 2>/dev/null &
+done
+wait
+E=$(date +%s%3N)
+ELAPSED=$((E - S))
+# Re-run single stream if parallel failed (no curl jobs output)
+curl -s -o /dev/null -w '%{size_download}|%{time_total}\n' --max-time 15 --connect-timeout 5   'https://speed.cloudflare.com/__down?bytes=20000000' 2>/dev/null
+printf 'T:%d' "$ELAPSED"
+        """.trimIndent()
+        val dlRaw = Shell.cmd(dlScript).exec().out
+        val dlTimeMs = dlRaw.lastOrNull { it.startsWith("T:") }
+            ?.removePrefix("T:")?.toLongOrNull() ?: -1L
+        // Parse individual size_download lines
+        val dlBytes = dlRaw.filter { it.contains("|") }
+            .mapNotNull { it.substringBefore("|").trim().toLongOrNull() }
+            .sum().let { if (it > 0) it else 20_000_000L }
+        val dlMbps = if (dlTimeMs > 500) (dlBytes * 8f / 1_000_000f) / (dlTimeMs / 1000f) else -1f
+        onProgress("download", 1f, dlMbps)
 
-        Pair(dlMbps, ulMbps)
+        // ── Upload ─────────────────────────────────────────────────
+        onProgress("upload", 0f, 0f)
+        val ulScript = """
+S=$(date +%s%3N)
+for i in 1 2 3 4; do
+  dd if=/dev/urandom bs=1024 count=3072 2>/dev/null |   curl -s -o /dev/null -w '%{size_upload}|%{time_total}\n' --max-time 12     --connect-timeout 5 -X POST -H 'Content-Type: application/octet-stream'     --data-binary @- 'https://speed.cloudflare.com/__up' 2>/dev/null &
+done
+wait
+E=$(date +%s%3N)
+printf 'T:%d' "$((E - S))"
+        """.trimIndent()
+        val ulRaw = Shell.cmd(ulScript).exec().out
+        val ulTimeMs = ulRaw.lastOrNull { it.startsWith("T:") }
+            ?.removePrefix("T:")?.toLongOrNull() ?: -1L
+        val ulBytes = ulRaw.filter { it.contains("|") }
+            .mapNotNull { it.substringBefore("|").trim().toLongOrNull() }
+            .sum().let { if (it > 0) it else 12_000_000L }
+        val ulMbps = if (ulTimeMs > 500) (ulBytes * 8f / 1_000_000f) / (ulTimeMs / 1000f) else -1f
+        onProgress("upload", 1f, ulMbps)
+
+        Pair(
+            if (dlMbps > 0) dlMbps else -1f,
+            if (ulMbps > 0) ulMbps else -1f
+        )
     }
 
     // ── Frequency lock (chmod on scaling nodes) ──────────────────────

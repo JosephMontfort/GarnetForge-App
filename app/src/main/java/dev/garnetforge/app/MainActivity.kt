@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
                 val deviceInfo  by vm.deviceInfo.collectAsState()
                 val coreStates      by vm.coreStates.collectAsState()
                 val dashboardReady  by vm.dashboardReady.collectAsState()
+                val installProgress by vm.installProgress.collectAsState()
                 val speedTestState  by vm.speedTestState.collectAsState()
                 val diagnosticState by vm.diagnosticState.collectAsState()
                 val entropyLevel    by vm.entropyLevel.collectAsState()
@@ -95,7 +96,7 @@ class MainActivity : ComponentActivity() {
                 val availFreqsGpu   by vm.availFreqsGpu.collectAsState()
 
                 when {
-                    checking || (rootOk && !dashboardReady) -> AppIconSplash()
+                    checking || (rootOk && !dashboardReady) -> AppIconSplash(installProgress)
                     !rootOk  -> NoRootScreen(
                         onRetry = {
                             // Force kill and restart
@@ -194,7 +195,6 @@ class MainActivity : ComponentActivity() {
                                         onSet         = { k, v -> vm.setConfig(k, v) },
                                         onLoadApps    = { vm.loadApps() },
                                         onSaveProfile = { pkg, prof -> vm.saveAppProfile(pkg, prof) },
-                                        onBoostEntropy = { vm.boostEntropy() },
                                     )
                                 }
                                 composable(Screen.Settings.route) {
@@ -247,24 +247,56 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AppIconSplash() {
+private fun AppIconSplash(progress: dev.garnetforge.app.root.ScriptManager.Progress? = null) {
+    val isFirstLaunch = progress != null && progress.total > 3
     Box(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally,
-               verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            modifier = Modifier.padding(horizontal = 40.dp)
+        ) {
             androidx.compose.foundation.Image(
                 painter = androidx.compose.ui.res.painterResource(R.mipmap.ic_launcher_raw),
                 contentDescription = "GarnetForge",
                 modifier = Modifier.size(96.dp)
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
             )
-            CircularProgressIndicator(
-                color = GarnetLight,
-                strokeWidth = 2.5.dp,
-                modifier = Modifier.size(24.dp)
-            )
+            Text("GarnetForge",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = GarnetLight)
+
+            if (isFirstLaunch && progress != null) {
+                // Show progress bar only on first launch
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LinearProgressIndicator(
+                        progress = { progress.step.toFloat() / progress.total.toFloat() },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = GarnetLight,
+                        trackColor = GarnetLight.copy(0.2f),
+                    )
+                    Text(progress.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text("First launch takes up to 30 seconds.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            } else {
+                CircularProgressIndicator(
+                    color = GarnetLight, strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(24.dp))
+                if (progress != null) {
+                    Text(progress.message, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }
