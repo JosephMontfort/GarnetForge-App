@@ -968,3 +968,121 @@ private fun FreqLockRow(locked: Boolean, onToggle: () -> Unit) {
             ))
     }
 }
+
+
+@Composable
+private fun CoreFreqGrid(cores: List<Int>, freqs: List<Int>, maxFreq: Int, color: Color) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "Core frequencies",
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            cores.forEach { core ->
+                val freq = freqs.getOrElse(core) { 0 }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(vertical = 10.dp, horizontal = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("C$core", fontWeight = FontWeight.Bold)
+                    Text("$freq", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text("Max: $maxFreq", style = MaterialTheme.typography.bodySmall, color = color)
+    }
+}
+
+@Composable
+private fun ChipRowTuning(
+    title: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(8.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            options.forEach { option ->
+                ProfileChip(option, selected == option) { onSelect(option) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RevertableSlider(
+    label: String,
+    value: Float,
+    min: Float,
+    max: Float,
+    steps: Int,
+    display: String,
+    tint: Color,
+    onChange: (Float) -> Unit,
+    onRevert: () -> Unit,
+    info: String = "",
+    onCommit: () -> Unit = {},
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            TextButton(onClick = onRevert) { Text("Revert") }
+        }
+
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            onValueChangeFinished = onCommit,
+            valueRange = min..max,
+            steps = steps.coerceAtLeast(0),
+            colors = SliderDefaults.colors(
+                thumbColor = tint,
+                activeTrackColor = tint,
+                inactiveTrackColor = MaterialTheme.colorScheme.outline,
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent,
+            )
+        )
+
+        if (info.isNotBlank() || display.isNotBlank()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                if (info.isNotBlank()) {
+                    Text(
+                        info,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                Text(
+                    display,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = tint,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
