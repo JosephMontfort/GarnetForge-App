@@ -36,6 +36,8 @@ fun SettingsScreen(
     diagnosticState: DiagnosticState,
     onTheme: (Int) -> Unit,
     onAccent: (Int) -> Unit,
+    config: dev.garnetforge.app.data.model.GarnetConfig,
+    onSet: (String, String) -> Unit,
     onBlurToggle: (Boolean) -> Unit,
     onRunDiagnostic: () -> Unit,
     onTelegram: () -> Unit,
@@ -80,6 +82,10 @@ fun SettingsScreen(
                 }
                 HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 LabeledSwitch("Background Blur", "Glass effect behind expanded tuning cards", blurEnabled, onBlurToggle)
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                LabeledSwitch("Apply on Boot",
+                    "Re-applies all tuning values on boot. Disable to keep kernel defaults after reboot.",
+                    config.applyOnBoot) { onSet("apply_on_boot", if (it) "1" else "0") }
             }
         }
 

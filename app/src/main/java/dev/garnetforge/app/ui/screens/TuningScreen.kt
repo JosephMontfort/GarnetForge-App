@@ -80,6 +80,12 @@ fun TuningScreen(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit = {},
+    littleFreqLocked: Boolean = false,
+    bigFreqLocked: Boolean = false,
+    gpuFreqLocked: Boolean = false,
+    onToggleLittleLock: () -> Unit = {},
+    onToggleBigLock: () -> Unit = {},
+    onToggleGpuLock: () -> Unit = {},
     blurEnabled: Boolean,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
@@ -126,7 +132,7 @@ fun TuningScreen(
                     color = adaptiveTint,
                     letterSpacing = 2.sp,
                     fontWeight = FontWeight.Bold)
-                Text("Every nanosecond counts.",
+                Text("Master Your Machine.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -204,6 +210,12 @@ fun TuningScreen(
                         speedTestState  = speedTestState,
                         entropyLevel    = entropyLevel,
                         onRunSpeedTest  = onRunSpeedTest,
+                        littleFreqLocked= littleFreqLocked,
+                        bigFreqLocked   = bigFreqLocked,
+                        gpuFreqLocked   = gpuFreqLocked,
+                        onToggleLittleLock = onToggleLittleLock,
+                        onToggleBigLock    = onToggleBigLock,
+                        onToggleGpuLock    = onToggleGpuLock,
                         onSet       = onSet,
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
@@ -233,6 +245,18 @@ private fun HeroOverlay(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
     onToggleCore: (Int) -> Unit,
@@ -341,7 +365,7 @@ private fun HeroOverlay(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, onSet, onProfileSelected, onToggleCore)
+                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, littleFreqLocked, bigFreqLocked, gpuFreqLocked, onToggleLittleLock, onToggleBigLock, onToggleGpuLock, onSet, onProfileSelected, onToggleCore)
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -499,6 +523,18 @@ private fun SectionContent(
     speedTestState: SpeedTestState,
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
     onSet: (String,String)->Unit,
     onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
 ) {
@@ -534,6 +570,8 @@ private fun SectionContent(
                 onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) },
                 info = "Maximum allowed frequency. Limit to save battery or thermals.",
             ) { onSet("cpu_policy0_max", freqL[maxI].toString()) }
+            Spacer(Modifier.height(6.dp))
+            FreqLockRow(littleFreqLocked) { onToggleLittleLock() }
         }
         "cpu_big" -> {
             val freqB = availFreqsB.ifEmpty { CPU_B }
@@ -557,6 +595,8 @@ private fun SectionContent(
                 onRevert = { maxI = freqB.lastIndex; onSet("cpu_policy4_max", freqB.last().toString()) },
                 info = "Maximum frequency for big cores. Limit for thermals.",
             ) { onSet("cpu_policy4_max", freqB[maxI].toString()) }
+            Spacer(Modifier.height(6.dp))
+            FreqLockRow(bigFreqLocked) { onToggleBigLock() }
         }
         "core" -> {
             Text("Core Control", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tRed)
@@ -610,6 +650,8 @@ private fun SectionContent(
                 onRevert = { idleTimer = nodeDefaults.gpuIdleTimer; onSet("gpu_idle_timer", nodeDefaults.gpuIdleTimer.toString()) },
                 info = "GPU goes idle after this many ms of no work. Lower = faster idle, more battery saving.",
             ) { onSet("gpu_idle_timer", idleTimer.toString()) }
+            Spacer(Modifier.height(6.dp))
+            FreqLockRow(gpuFreqLocked) { onToggleGpuLock() }
         }
         "memory" -> {
             Text("Memory & VM", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tBlue)
@@ -963,5 +1005,38 @@ private fun ChipRowTuning(label: String, opts: List<String>, sel: String, info: 
         FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
             opts.forEach { o -> ProfileChip(o, o==sel) { onSel(o) } }
         }
+    }
+}
+
+// ── Frequency lock toggle ─────────────────────────────────────────────
+@Composable
+private fun FreqLockRow(locked: Boolean, onToggle: () -> Unit) {
+    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (locked) MaterialTheme.colorScheme.errorContainer.copy(0.3f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(0.4f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        Arrangement.SpaceBetween, Alignment.CenterVertically
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (locked) Icons.Default.Lock else Icons.Default.LockOpen, null,
+                Modifier.size(14.dp),
+                tint = if (locked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            Column {
+                Text(if (locked) "Frequency Locked" else "Lock Frequency",
+                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium,
+                    color = if (locked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                if (locked) Text("chmod 444 on nodes. Per-app CPU profiles won't apply.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error.copy(0.7f))
+            }
+        }
+        Switch(checked = locked, onCheckedChange = { onToggle() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor  = MaterialTheme.colorScheme.error,
+                checkedTrackColor  = MaterialTheme.colorScheme.errorContainer,
+            ))
     }
 }

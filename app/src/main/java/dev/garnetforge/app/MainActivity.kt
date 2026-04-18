@@ -84,6 +84,9 @@ class MainActivity : ComponentActivity() {
                 val speedTestState  by vm.speedTestState.collectAsState()
                 val diagnosticState by vm.diagnosticState.collectAsState()
                 val entropyLevel    by vm.entropyLevel.collectAsState()
+                val littleFreqLocked by vm.littleFreqLocked.collectAsState()
+                val bigFreqLocked    by vm.bigFreqLocked.collectAsState()
+                val gpuFreqLocked    by vm.gpuFreqLocked.collectAsState()
                 val perCoreFreqMhz  by vm.perCoreFreqMhz.collectAsState()
                 val availFreqsL     by vm.availFreqsL.collectAsState()
                 val liveNodes       by vm.liveNodes.collectAsState()
@@ -166,6 +169,12 @@ class MainActivity : ComponentActivity() {
                                     TuningScreen(config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults,
                                         speedTestState = speedTestState, entropyLevel = entropyLevel,
                                         onRunSpeedTest = { vm.runSpeedTest() },
+                                        littleFreqLocked = littleFreqLocked,
+                                        bigFreqLocked    = bigFreqLocked,
+                                        gpuFreqLocked    = gpuFreqLocked,
+                                        onToggleLittleLock = { vm.toggleFreqLock(0) },
+                                        onToggleBigLock    = { vm.toggleFreqLock(4) },
+                                        onToggleGpuLock    = { vm.toggleGpuFreqLock() },
                                         blurEnabled = blurEnabled,
                                         onSet = { k, v -> vm.setConfig(k, v) },
                                         onProfileSelected = { vm.applyThermalProfile(it) },
@@ -185,12 +194,15 @@ class MainActivity : ComponentActivity() {
                                         onSet         = { k, v -> vm.setConfig(k, v) },
                                         onLoadApps    = { vm.loadApps() },
                                         onSaveProfile = { pkg, prof -> vm.saveAppProfile(pkg, prof) },
+                                        onBoostEntropy = { vm.boostEntropy() },
                                     )
                                 }
                                 composable(Screen.Settings.route) {
                                     SettingsScreen(
                                         diagnosticState = diagnosticState,
                                         onRunDiagnostic = { vm.runDiagnostic() },
+                                        config  = config,
+                                        onSet   = { k, v -> vm.setConfig(k, v) },
                                         deviceInfo  = deviceInfo,
                                         themeMode   = themeMode,
                                         accentTheme = accentTheme,

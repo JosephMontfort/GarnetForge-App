@@ -17,6 +17,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import dev.garnetforge.app.data.model.*
+import android.net.Uri
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
 import java.time.LocalTime
@@ -181,22 +185,47 @@ private fun StatChip(icon: ImageVector, value: String, label: String, color: Col
 
 @Composable
 private fun BroomChip(onClick: () -> Unit, modifier: Modifier) {
-    var clicked by remember { mutableStateOf(false) }
-    val angle by androidx.compose.animation.core.animateFloatAsState(
-        if (clicked) 30f else -10f,
-        androidx.compose.animation.core.spring(
-            androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-            androidx.compose.animation.core.Spring.StiffnessMedium),
-        finishedListener = { clicked = false }, label = "broom")
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val mp = remember {
+        try {
+            android.media.MediaPlayer().also { player ->
+                val afd = context.assets.openFd("trash_clean.webm")
+                player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                player.isLooping = false
+                player.prepare()
+            }
+        } catch (_: Exception) { null }
+    }
+    DisposableEffect(Unit) { onDispose { mp?.release() } }
+
     Box(modifier.clip(RoundedCornerShape(16.dp))
         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
         .background(MaterialTheme.colorScheme.surfaceVariant)
-        .clickable { clicked = true; onClick() }, contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(vertical = 14.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.CleaningServices, null,
-                Modifier.size(18.dp).graphicsLayer(rotationZ = angle), tint = PurpleLight)
-            Spacer(Modifier.height(4.dp))
-            Text("Clear", style = MaterialTheme.typography.titleMedium, color = PurpleLight, fontWeight = FontWeight.ExtraBold)
+        .clickable {
+            mp?.let { player -> if (!player.isPlaying) { player.seekTo(0); player.start() } }
+            onClick()
+        }, contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(42.dp)) {
+                AndroidView(
+                    factory = { ctx ->
+                        android.view.SurfaceView(ctx).also { sv ->
+                            sv.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            sv.holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                                override fun surfaceCreated(h: android.view.SurfaceHolder) {
+                                    mp?.setSurface(h.surface)
+                                }
+                                override fun surfaceChanged(h: android.view.SurfaceHolder, f: Int, w: Int, ht: Int) {}
+                                override fun surfaceDestroyed(h: android.view.SurfaceHolder) { mp?.setSurface(null) }
+                            })
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Text("Clear", style = MaterialTheme.typography.titleSmall, color = PurpleLight, fontWeight = FontWeight.ExtraBold)
             Text("RAM", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

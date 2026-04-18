@@ -29,7 +29,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val dataStore = app.dataStore
     val themeMode: StateFlow<Int> = dataStore.data.map { it[intPreferencesKey("theme_mode")] ?: 0 }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
-    val blurEnabled: StateFlow<Boolean> = dataStore.data.map { it[booleanPreferencesKey("blur_enabled")] ?: true }
+    val blurEnabled: StateFlow<Boolean> = dataStore.data.map { it[booleanPreferencesKey("blur_enabled")] ?: false }
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val accentTheme: StateFlow<Int> = dataStore.data.map { it[intPreferencesKey("accent_theme")] ?: 0 }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
@@ -247,6 +247,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ── Entropy ───────────────────────────────────────────────────────
     private val _entropyLevel = MutableStateFlow(-1)
     val entropyLevel: StateFlow<Int> = _entropyLevel.asStateFlow()
+
+    // Frequency lock state
+    private val _littleFreqLocked = MutableStateFlow(false)
+    private val _bigFreqLocked    = MutableStateFlow(false)
+    private val _gpuFreqLocked    = MutableStateFlow(false)
+    val littleFreqLocked: StateFlow<Boolean> = _littleFreqLocked.asStateFlow()
+    val bigFreqLocked   : StateFlow<Boolean> = _bigFreqLocked.asStateFlow()
+    val gpuFreqLocked   : StateFlow<Boolean> = _gpuFreqLocked.asStateFlow()
+
+    fun toggleFreqLock(policy: Int) = viewModelScope.launch {
+        val cur = if (policy==0) _littleFreqLocked.value else _bigFreqLocked.value
+        val next = !cur
+        runCatching { sysfsRepo.setFreqLocked(policy, next) }
+        if (policy==0) _littleFreqLocked.value=next else _bigFreqLocked.value=next
+    }
+    fun toggleGpuFreqLock() = viewModelScope.launch {
+        val next = !_gpuFreqLocked.value
+        runCatching { sysfsRepo.setGpuFreqLocked(next) }
+        _gpuFreqLocked.value = next
+    }
+    fun refreshLockStates() = viewModelScope.launch {
+        runCatching {
+            _littleFreqLocked.value = sysfsRepo.isFreqLocked(0)
+            _bigFreqLocked.value    = sysfsRepo.isFreqLocked(4)
+            _gpuFreqLocked.value    = sysfsRepo.isGpuFreqLocked()
+        }
+    }
 
     fun boostEntropy() = viewModelScope.launch {
         runCatching { sysfsRepo.boostEntropy(); delay(500); refreshEntropy() }

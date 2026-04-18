@@ -435,31 +435,58 @@ class SysfsRepository(private val context: Context) {
 
     // ── Network speed test (using shell dd + /dev/urandom for throughput) ─
     suspend fun runSpeedTest(): Pair<Float, Float> = withContext(Dispatchers.IO) {
-        // Download test: time downloading from a public test endpoint
+        // Download 10 MB, measure elapsed ms via date +%s%3N
         val dlRaw = Shell.cmd(
-            "START=6262764059; " +
-            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
-            "  https://speed.cloudflare.com/__down?bytes=10000000 2>/dev/null; " +
-            "END=6262764063; " +
-            "printf '%d' \"\$((END - START))\""
+            "S=\$(date +%s%3N); " +
+            "curl -s -o /dev/null --max-time 15 --connect-timeout 5 " +
+            "  'https://speed.cloudflare.com/__down?bytes=10000000' 2>/dev/null; " +
+            "E=\$(date +%s%3N); " +
+            "printf '%d' \"\$((E - S))\""
         ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
-        val dlMbps = if (dlRaw > 0) (10_000_000f * 8 / 1_000_000f) / (dlRaw / 1000f) else -1f
+        val dlMbps = if (dlRaw > 100) (10_000_000f * 8f / 1_000_000f) / (dlRaw / 1000f) else -1f
 
-        // Upload test: time uploading 2MB of zeros
+        // Upload 2 MB random data
         val ulRaw = Shell.cmd(
-            "START=6262764067; " +
+            "S=\$(date +%s%3N); " +
             "dd if=/dev/urandom bs=1024 count=2048 2>/dev/null | " +
-            "curl -s -o /dev/null --max-time 8 --connect-timeout 3 " +
-            "  -X POST -d @- https://speed.cloudflare.com/__up 2>/dev/null; " +
-            "END=6262764072; " +
-            "printf '%d' \"\$((END - START))\""
+            "curl -s -o /dev/null --max-time 15 --connect-timeout 5 " +
+            "  -X POST -H 'Content-Type: application/octet-stream' " +
+            "  --data-binary @- 'https://speed.cloudflare.com/__up' 2>/dev/null; " +
+            "E=\$(date +%s%3N); " +
+            "printf '%d' \"\$((E - S))\""
         ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: -1L
-        val ulMbps = if (ulRaw > 0) (2_000_000f * 8 / 1_000_000f) / (ulRaw / 1000f) else -1f
+        val ulMbps = if (ulRaw > 100) (2_000_000f * 8f / 1_000_000f) / (ulRaw / 1000f) else -1f
 
         Pair(dlMbps, ulMbps)
     }
 
-    // ── Installed app list ────────────────────────────────────────────
+    // ── Frequency lock (chmod on scaling nodes) ──────────────────────
+    suspend fun setFreqLocked(policy: Int, locked: Boolean): Unit = withContext(Dispatchers.IO) {
+        val nodes = if (policy == 0)
+            listOf(CPU0_MIN, CPU0_MAX)
+        else
+            listOf(CPU4_MIN, CPU4_MAX)
+        val perm = if (locked) "444" else "644"
+        nodes.forEach { n -> Shell.cmd("chmod $perm $n 2>/dev/null").exec() }
+    }
+
+    suspend fun setGpuFreqLocked(locked: Boolean): Unit = withContext(Dispatchers.IO) {
+        val perm = if (locked) "444" else "644"
+        Shell.cmd("chmod $perm $GPU_MIN 2>/dev/null; chmod $perm $GPU_MAX 2>/dev/null").exec()
+    }
+
+    suspend fun isFreqLocked(policy: Int): Boolean = withContext(Dispatchers.IO) {
+        val node = if (policy == 0) CPU0_MAX else CPU4_MAX
+        val perms = Shell.cmd("stat -c '%a' $node 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "644"
+        perms == "444" || perms == "444"
+    }
+
+    suspend fun isGpuFreqLocked(): Boolean = withContext(Dispatchers.IO) {
+        val perms = Shell.cmd("stat -c '%a' $GPU_MAX 2>/dev/null").exec().out.firstOrNull()?.trim() ?: "644"
+        perms == "444"
+    }
+
+        // ── Installed app list ────────────────────────────────────────────
     suspend fun getInstalledApps(): List<ThermalApp> = withContext(Dispatchers.Default) {
         val pm = context.packageManager
         val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).also {

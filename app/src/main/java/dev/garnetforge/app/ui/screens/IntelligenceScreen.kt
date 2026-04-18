@@ -22,6 +22,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
+import dev.garnetforge.app.ui.theme.LocalAccent
 import dev.garnetforge.app.data.model.*
 import dev.garnetforge.app.ui.components.*
 import dev.garnetforge.app.ui.theme.*
@@ -49,6 +56,7 @@ fun IntelligenceScreen(
     onSaveProfile: (String, AppProfile?) -> Unit,
     onSavePreset: (ProfilePreset) -> Unit,
     onDeletePreset: (String) -> Unit,
+    onBoostEntropy: () -> Unit = {},
 ) {
     var query        by remember { mutableStateOf("") }
     var filter       by remember { mutableStateOf(AppFilter.ALL) }
@@ -112,12 +120,24 @@ fun IntelligenceScreen(
                         "Offlines extra cores on screen-off to save battery. Restores on wake.",
                         config.nightMode) { onSet("night_mode", if (it) "1" else "0") }
                     AnimatedVisibility(config.nightMode, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                        ScreenOffCustomiser(config = config, onSet = onSet)
+                        var showCustomise by remember { mutableStateOf(false) }
+                        Column(Modifier.padding(top = 6.dp)) {
+                            OutlinedButton(
+                                onClick = { showCustomise = !showCustomise },
+                                modifier = Modifier.fillMaxWidth(),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(0.5f)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(if (showCustomise) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null,
+                                    modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (showCustomise) "Hide Customisation" else "Customise")
+                            }
+                            AnimatedVisibility(showCustomise, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                                ScreenOffCustomiser(config = config, onSet = onSet)
+                            }
+                        }
                     }
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
-                    LabeledSwitch("Apply on Boot",
-                        "Re-applies all tuning values on device boot. Disable to keep kernel defaults after reboot.",
-                        config.applyOnBoot) { onSet("apply_on_boot", if (it) "1" else "0") }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
                     LabeledSwitch("Charging Control",
                         "Switches to Charging thermal profile when charger connected.",
@@ -126,6 +146,20 @@ fun IntelligenceScreen(
                     LabeledSwitch("Per-App Profiles",
                         "Apply custom CPU/GPU/thermal/core profiles per app. Requires Usage Access.",
                         config.perAppThermal) { onSet("per_app_thermal", if (it) "1" else "0") }
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp), 0.5.dp, BorderCol)
+                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Entropy Boost", style=MaterialTheme.typography.bodyLarge, fontWeight=FontWeight.Medium)
+                            Text("Feeds /dev/hwrng into entropy pool for stronger random number generation",
+                                style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        FilledTonalButton(onClick = onBoostEntropy,
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                            Icon(Icons.Default.Bolt, null, modifier=Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Boost")
+                        }
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -706,148 +740,173 @@ private fun SheetSlider(label: String, value: Float, min: Float, max: Float, ste
     }
 }
 
+
 // ── Screen-Off Save customiser ────────────────────────────────────────
 @Composable
 private fun ScreenOffCustomiser(config: GarnetConfig, onSet: (String, String) -> Unit) {
+    val accent  = LocalAccent.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    val tCool   = if (isLight) Color(0xFF00695C) else ColorCool
-    val GOVS    = listOf("", "walt", "conservative", "powersave", "schedutil")
-    val GOV_LABELS = listOf("No change", "walt", "conservative", "powersave", "schedutil")
+    val tAccent = if (isLight) accent.lightPrimary else accent.primary
+    val borderC = if (isLight) accent.lightPrimary.copy(0.3f) else accent.primary.copy(0.25f)
+    val bgC     = if (isLight) accent.lightCard else accent.darkCard
 
     Column(
-        Modifier.fillMaxWidth()
-            .padding(start = 8.dp, end = 0.dp, top = 6.dp, bottom = 2.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.5f))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .border(1.dp, borderC, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgC)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Screen-Off Configuration", style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold, color = tCool)
+        // Little cores dropdown
+        CoreCountPicker(
+            label       = "Little cores to offline",
+            sublabel    = "Cores 1-3 eligible (Core 0 always stays on)",
+            selected    = config.screenOffLittleCoresOff,
+            max         = 3,
+            accentColor = tAccent,
+            onSelect    = { onSet("screen_off_little_cores_off", it.toString()) }
+        )
 
-        // Chip selectors for core count
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Little cores offline:", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (0..3).forEach { n ->
-                    FilterChip(selected = config.screenOffLittleCoresOff == n,
-                        onClick = { onSet("screen_off_little_cores_off", n.toString()) },
-                        label = { Text("$n") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = tCool,
-                            selectedLabelColor = Color.White),
-                    )
-                }
-            }
+        HorizontalDivider(thickness = 0.5.dp, color = borderC)
+
+        // Big cores dropdown
+        CoreCountPicker(
+            label       = "Big cores to offline",
+            sublabel    = "Cores 5-7 eligible (Core 4 always stays on)",
+            selected    = config.screenOffBigCoresOff,
+            max         = 3,
+            accentColor = tAccent,
+            onSelect    = { onSet("screen_off_big_cores_off", it.toString()) }
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.RotateRight, null, Modifier.size(14.dp), tint = tAccent.copy(0.7f))
+            Text("Rotation enabled — cores rotate to distribute wear evenly",
+                style = MaterialTheme.typography.labelSmall,
+                color = tAccent.copy(0.7f))
         }
 
-        // Big cluster cores to offline (0–3, keep at least core 4)
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Big cores offline:", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                (0..3).forEach { n ->
-                    FilterChip(selected = config.screenOffBigCoresOff == n,
-                        onClick = { onSet("screen_off_big_cores_off", n.toString()) },
-                        label = { Text("$n") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = tCool,
-                            selectedLabelColor = Color.White),
-                    )
-                }
-            }
-        }
+        HorizontalDivider(thickness = 0.5.dp, color = borderC)
 
-        // Rotation note
-        Text("⟳ Core rotation enabled — offlines rotate across cores to prevent uneven wear.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
-
-        // GPU max while screen off
-        val gpuOptions = listOf(0, 295, 345, 500, 650)
-        val gpuLabels  = listOf("No change", "295 MHz", "345 MHz", "500 MHz", "650 MHz")
-        Text("GPU max while screen off:", style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            gpuOptions.forEachIndexed { i, mhz ->
-                FilterChip(selected = config.screenOffGpuMaxMhz == mhz,
-                    onClick = { onSet("screen_off_gpu_max_mhz", mhz.toString()) },
-                    label = { Text(gpuLabels[i], style = MaterialTheme.typography.labelSmall) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = tCool, selectedLabelColor = Color.White),
+        // GPU max
+        Text("GPU max freq while screen off",
+            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+            color = tAccent)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement   = Arrangement.spacedBy(6.dp)) {
+            listOf(0 to "No change", 295 to "295 MHz", 345 to "345 MHz",
+                   500 to "500 MHz", 650 to "650 MHz").forEach { (mhz, lbl) ->
+                FilterChip(
+                    selected = config.screenOffGpuMaxMhz == mhz,
+                    onClick  = { onSet("screen_off_gpu_max_mhz", mhz.toString()) },
+                    label    = { Text(lbl, style = MaterialTheme.typography.labelSmall) },
+                    colors   = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = tAccent,
+                        selectedLabelColor     = Color.White),
                 )
             }
         }
 
-        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+        HorizontalDivider(thickness = 0.5.dp, color = borderC)
 
-        // Governor override
-        Text("Governor while screen off:", style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("Little", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    GOVS.forEachIndexed { i, g ->
-                        FilterChip(selected = config.screenOffGovLittle == g,
-                            onClick = { onSet("screen_off_gov_little", g) },
-                            label = { Text(GOV_LABELS[i], style = MaterialTheme.typography.labelSmall) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = tCool, selectedLabelColor = Color.White),
-                        )
-                    }
+        // Governors — side-by-side two-column layout
+        Text("Governor while screen off",
+            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+            color = tAccent)
+        val govOpts   = listOf("" to "No change", "walt" to "walt", "conservative" to "conservative",
+                               "powersave" to "powersave", "schedutil" to "schedutil")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Little
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Little cluster", style = MaterialTheme.typography.labelSmall, color = tAccent.copy(0.8f))
+                govOpts.forEach { (v, lbl) ->
+                    FilterChip(
+                        selected  = config.screenOffGovLittle == v,
+                        onClick   = { onSet("screen_off_gov_little", v) },
+                        label     = { Text(lbl, style = MaterialTheme.typography.labelSmall) },
+                        modifier  = Modifier.fillMaxWidth(),
+                        colors    = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = tAccent, selectedLabelColor = Color.White),
+                    )
                 }
             }
-            Column(Modifier.weight(1f)) {
-                Text("Big", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    GOVS.forEachIndexed { i, g ->
-                        FilterChip(selected = config.screenOffGovBig == g,
-                            onClick = { onSet("screen_off_gov_big", g) },
-                            label = { Text(GOV_LABELS[i], style = MaterialTheme.typography.labelSmall) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = tCool, selectedLabelColor = Color.White),
-                        )
-                    }
+            // Big
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Big cluster", style = MaterialTheme.typography.labelSmall, color = tAccent.copy(0.8f))
+                govOpts.forEach { (v, lbl) ->
+                    FilterChip(
+                        selected  = config.screenOffGovBig == v,
+                        onClick   = { onSet("screen_off_gov_big", v) },
+                        label     = { Text(lbl, style = MaterialTheme.typography.labelSmall) },
+                        modifier  = Modifier.fillMaxWidth(),
+                        colors    = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = tAccent, selectedLabelColor = Color.White),
+                    )
                 }
             }
         }
 
-        HorizontalDivider(thickness = 0.5.dp, color = BorderCol)
+        HorizontalDivider(thickness = 0.5.dp, color = borderC)
 
-        // Time window toggle + pickers
+        // Time window
         LabeledSwitch(
-            label = "Active Time Window Only",
-            subtitle = "Only apply screen-off save during a specific time period (e.g. night hours)",
-            checked = config.screenOffTimeEnabled,
+            label    = "Active Time Window Only",
+            subtitle = "Only apply screen-off save during a specific time period",
+            checked  = config.screenOffTimeEnabled,
             onCheckedChange = { onSet("screen_off_time_enabled", if (it) "1" else "0") }
         )
         AnimatedVisibility(config.screenOffTimeEnabled,
             enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Spacer(Modifier.height(2.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
-                    TimePickerField(
-                        label = "Start", hour = config.screenOffTimeStart,
-                        onHourChange = { onSet("screen_off_time_start", it.toString()) },
-                        modifier = Modifier.weight(1f), tint = tCool
-                    )
-                    TimePickerField(
-                        label = "End", hour = config.screenOffTimeEnd,
-                        onHourChange = { onSet("screen_off_time_end", it.toString()) },
-                        modifier = Modifier.weight(1f), tint = tCool
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), Arrangement.spacedBy(16.dp)) {
+                TimePickerField("Start", config.screenOffTimeStart,
+                    { onSet("screen_off_time_start", it.toString()) }, Modifier.weight(1f), tAccent)
+                TimePickerField("End", config.screenOffTimeEnd,
+                    { onSet("screen_off_time_end", it.toString()) }, Modifier.weight(1f), tAccent)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoreCountPicker(
+    label: String, sublabel: String, selected: Int, max: Int,
+    accentColor: Color, onSelect: (Int) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
+            color = accentColor)
+        Text(sublabel, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+            OutlinedTextField(
+                value         = if (selected == 0) "0 (keep all on)" else "$selected core${if (selected>1)"s" else ""} offline",
+                onValueChange = {},
+                readOnly      = true,
+                label         = null,
+                trailingIcon  = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier      = Modifier.menuAnchor().fillMaxWidth(),
+                colors        = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor   = accentColor,
+                    unfocusedBorderColor = accentColor.copy(0.4f),
+                    focusedTextColor     = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor   = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                (0..max).forEach { n ->
+                    DropdownMenuItem(
+                        text = { Text(if (n==0) "0 — keep all on" else "$n core${if(n>1)"s" else ""} offline") },
+                        onClick = { onSelect(n); expanded = false },
+                        colors  = MenuDefaults.itemColors(
+                            textColor = if (n == selected) accentColor else MaterialTheme.colorScheme.onSurface
+                        ),
                     )
                 }
-                val (startH, endH) = config.screenOffTimeStart to config.screenOffTimeEnd
-                val desc = if (startH <= endH) "$startH:00 – $endH:00" else "$startH:00 – $endH:00 (next day)"
-                Text("Active window: $desc",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = tCool)
             }
         }
     }
@@ -864,19 +923,16 @@ private fun TimePickerField(
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalIconButton(
-                onClick = { onHourChange((hour - 1 + 24) % 24) },
-                modifier = Modifier.size(32.dp)
-            ) { Text("−", color = tint, fontWeight = FontWeight.Bold) }
-            Text(
-                "%02d:00".format(hour),
-                style = MaterialTheme.typography.titleMedium,
-                color = tint, fontWeight = FontWeight.Bold
-            )
-            FilledTonalIconButton(
-                onClick = { onHourChange((hour + 1) % 24) },
-                modifier = Modifier.size(32.dp)
-            ) { Text("+", color = tint, fontWeight = FontWeight.Bold) }
+            FilledTonalIconButton(onClick = { onHourChange((hour-1+24)%24) },
+                modifier = Modifier.size(32.dp)) {
+                Text("−", color = tint, fontWeight = FontWeight.Bold)
+            }
+            Text("%02d:00".format(hour), style = MaterialTheme.typography.titleMedium,
+                color = tint, fontWeight = FontWeight.Bold)
+            FilledTonalIconButton(onClick = { onHourChange((hour+1)%24) },
+                modifier = Modifier.size(32.dp)) {
+                Text("+", color = tint, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
