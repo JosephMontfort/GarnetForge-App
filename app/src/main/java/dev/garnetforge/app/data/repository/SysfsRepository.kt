@@ -458,7 +458,7 @@ E=$(date +%s%3N)
 ELAPSED=$((E - S))
 # Re-run single stream if parallel failed (no curl jobs output)
 curl -s -o /dev/null -w '%{size_download}|%{time_total}\n' --max-time 15 --connect-timeout 5   'https://speed.cloudflare.com/__down?bytes=20000000' 2>/dev/null
-printf 'T:%d' "$ELAPSED"
+printf 'T:%d' "${'$'}ELAPSED"
         """.trimIndent()
         val dlRaw = Shell.cmd(dlScript).exec().out
         val dlTimeMs = dlRaw.lastOrNull { it.startsWith("T:") }
