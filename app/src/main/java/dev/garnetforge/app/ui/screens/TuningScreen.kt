@@ -551,20 +551,18 @@ private fun SectionContent(
             Spacer(Modifier.height(4.dp))
             CoreFreqGrid(cores = (0..3).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzL, color = tRed)
             Spacer(Modifier.height(8.dp))
-            ChipRowTuning("Governor", GOVS, config.cpuPolicy0Governor,
-                info = "Frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy0_governor", it) }
+            ChipRowTuning("Governor", GOVS, config.cpuPolicy0Governor)
+ { onSet("cpu_policy0_governor", it) }
             Spacer(Modifier.height(8.dp))
             var minI by remember(config.cpuPolicy0Min, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Min)) }
             var maxI by remember(config.cpuPolicy0Max, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Max)) }
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
-                onRevert = { minI = 0; onSet("cpu_policy0_min", freqL.first().toString()) },
-                info = "Minimum allowed frequency. Lower = better idle battery life.",
+                onRevert = { minI = 0; onSet("cpu_policy0_min", freqL.first().toString()) }
             ) { onSet("cpu_policy0_min", freqL[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
-                onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) },
-                info = "Maximum allowed frequency. Limit to save battery or thermals.",
+                onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) }
             ) { onSet("cpu_policy0_max", freqL[maxI].toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(littleFreqLocked) { onToggleLittleLock() }
@@ -576,8 +574,8 @@ private fun SectionContent(
             Spacer(Modifier.height(4.dp))
             CoreFreqGrid(cores = (4..7).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzB, color = tRed)
             Spacer(Modifier.height(8.dp))
-            ChipRowTuning("Governor", GOVS, config.cpuPolicy4Governor,
-                info = "Frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy4_governor", it) }
+            ChipRowTuning("Governor", GOVS, config.cpuPolicy4Governor)
+ { onSet("cpu_policy4_governor", it) }
             Spacer(Modifier.height(8.dp))
             var minI by remember(config.cpuPolicy4Min, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Min)) }
             var maxI by remember(config.cpuPolicy4Max, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Max)) }
