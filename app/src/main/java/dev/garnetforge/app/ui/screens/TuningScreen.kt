@@ -88,7 +88,7 @@ fun TuningScreen(
     gpuFreqLocked: Boolean = false,
     onToggleLittleLock: () -> Unit = {},
     onToggleBigLock: () -> Unit = {},
-    onToggleGpuLock: () -> Unit = {},
+    onToggleGpuLock: () -> Unit = {}
 ) {
     val density = LocalDensity.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
@@ -208,12 +208,6 @@ fun TuningScreen(
                         speedTestState  = speedTestState,
                         entropyLevel    = entropyLevel,
                         onRunSpeedTest  = onRunSpeedTest,
-                        littleFreqLocked= littleFreqLocked,
-                        bigFreqLocked   = bigFreqLocked,
-                        gpuFreqLocked   = gpuFreqLocked,
-                        onToggleLittleLock = onToggleLittleLock,
-                        onToggleBigLock    = onToggleBigLock,
-                        onToggleGpuLock    = onToggleGpuLock,
                         onSet       = onSet,
                         onProfileSelected = onProfileSelected,
                         onToggleCore= onToggleCore,
@@ -346,7 +340,14 @@ private fun HeroOverlay(
                 Column(
                     Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, littleFreqLocked, bigFreqLocked, gpuFreqLocked, onToggleLittleLock, onToggleBigLock, onToggleGpuLock, onSet, onProfileSelected, onToggleCore)
+                    SectionContent(sectionId, config, sconfig, coreStates, perCoreFreqMhz, availFreqsL, availFreqsB, availFreqsGpu, liveNodes, nodeDefaults, speedTestState, entropyLevel, onRunSpeedTest, littleFreqLocked, bigFreqLocked, gpuFreqLocked, onToggleLittleLock, onToggleBigLock, onToggleGpuLock, onSet, onProfileSelected, onToggleCore,
+    littleFreqLocked = littleFreqLocked,
+    bigFreqLocked = bigFreqLocked,
+    gpuFreqLocked = gpuFreqLocked,
+    onToggleLittleLock = onToggleLittleLock,
+    onToggleBigLock = onToggleBigLock,
+    onToggleGpuLock = onToggleGpuLock
+)
                     Spacer(Modifier.height(40.dp))
                 }
             }
@@ -502,7 +503,14 @@ private fun SectionContent(
     entropyLevel: Int,
     onRunSpeedTest: () -> Unit,
     onSet: (String,String)->Unit,
-    onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit) {
+    onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
+    littleFreqLocked: Boolean = false,
+    bigFreqLocked: Boolean = false,
+    gpuFreqLocked: Boolean = false,
+    onToggleLittleLock: () -> Unit = {},
+    onToggleBigLock: () -> Unit = {},
+    onToggleGpuLock: () -> Unit = {}
+) {
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
     val tRed    = if (isLight) GarnetRed    else GarnetLight
     val tBlue   = if (isLight) Color(0xFF0288D1) else ColorBlue
