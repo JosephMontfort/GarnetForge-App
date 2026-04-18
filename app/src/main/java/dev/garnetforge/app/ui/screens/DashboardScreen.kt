@@ -213,6 +213,8 @@ private fun BroomChip(onClick: () -> Unit, modifier: Modifier) {
                     factory = { ctx ->
                         android.view.SurfaceView(ctx).also { sv ->
                             sv.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            sv.setZOrderOnTop(true)
+                            sv.holder.setFormat(android.graphics.PixelFormat.TRANSPARENT)
                             sv.holder.addCallback(object : android.view.SurfaceHolder.Callback {
                                 override fun surfaceCreated(h: android.view.SurfaceHolder) {
                                     mp?.setSurface(h.surface)
