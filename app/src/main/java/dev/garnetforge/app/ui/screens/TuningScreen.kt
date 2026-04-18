@@ -688,8 +688,7 @@ private fun SectionContent(
                 info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.",
             ) { onSet("zram_size", ZRAM_B[zI].toString()) }
             Spacer(Modifier.height(4.dp))
-            ChipRowTuning("ZRAM Algorithm", ZRAM_ALGOS, config.zramAlgo,
-                info = "Compression: lz4 = fastest, zstd = best ratio, lzo = balanced.") { onSet("zram_algo", it) }
+            ChipRowTuning("ZRAM Algorithm", ZRAM_ALGOS, config.zramAlgo) { onSet("zram_algo", it) }
         }
         "thermal" -> {
             Text("Thermal Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tRed)
@@ -720,8 +719,7 @@ private fun SectionContent(
         "io" -> {
             Text("I/O", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tCool)
             Spacer(Modifier.height(8.dp))
-            ChipRowTuning("Scheduler", listOf("bfq","mq-deadline","kyber","none"), config.ioScheduler,
-                info = "Block I/O scheduler. bfq = interactive, mq-deadline = low latency, kyber = throughput.") { onSet("io_scheduler", it) }
+            ChipRowTuning("Scheduler", listOf("bfq","mq-deadline","kyber","none"), config.ioScheduler) { onSet("io_scheduler", it) }
             Spacer(Modifier.height(12.dp))
             // Read-ahead: discrete list, use indexing
             val liveRa = liveNodes.readAheadKb
@@ -738,8 +736,7 @@ private fun SectionContent(
             Text("Network", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tBlue)
             Spacer(Modifier.height(8.dp))
             val liveTcp = liveNodes.tcpAlgo.ifEmpty { config.tcpAlgo }
-            ChipRowTuning("TCP Congestion", listOf("cubic","reno","westwood","bbr"), liveTcp,
-                info = "TCP congestion control. bbr = low latency+high throughput, cubic = Linux default.") { onSet("tcp_algo", it) }
+            ChipRowTuning("TCP Congestion", listOf("cubic","reno","westwood","bbr"), liveTcp) { onSet("tcp_algo", it) }
             Spacer(Modifier.height(12.dp))
             val liveRxq = liveNodes.netRxqueuelen
             val initRxq = if (liveRxq > 0) liveRxq else config.netRxqueuelen
