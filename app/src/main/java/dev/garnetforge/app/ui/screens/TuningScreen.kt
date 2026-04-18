@@ -82,7 +82,14 @@ fun TuningScreen(
     blurEnabled: Boolean,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
-    onToggleCore: (Int) -> Unit, littleFreqLocked: Boolean = false, bigFreqLocked: Boolean = false, gpuFreqLocked: Boolean = false, onToggleLittleLock: () -> Unit = {}, onToggleBigLock: () -> Unit = {}, onToggleGpuLock: () -> Unit = {}) {
+    onToggleCore: (Int) -> Unit,
+    littleFreqLocked: Boolean = false,
+    bigFreqLocked: Boolean = false,
+    gpuFreqLocked: Boolean = false,
+    onToggleLittleLock: () -> Unit = {},
+    onToggleBigLock: () -> Unit = {},
+    onToggleGpuLock: () -> Unit = {},
+) {
     val density = LocalDensity.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
 
