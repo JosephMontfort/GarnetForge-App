@@ -259,6 +259,12 @@ private fun HeroOverlay(
     onToggleLittleLock: () -> Unit,
     onToggleBigLock: () -> Unit,
     onToggleGpuLock: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
     onSet: (String, String) -> Unit,
     onProfileSelected: (ThermalProfile) -> Unit,
     onToggleCore: (Int) -> Unit,
@@ -531,6 +537,12 @@ private fun SectionContent(
     onToggleLittleLock: () -> Unit,
     onToggleBigLock: () -> Unit,
     onToggleGpuLock: () -> Unit,
+    littleFreqLocked: Boolean,
+    bigFreqLocked: Boolean,
+    gpuFreqLocked: Boolean,
+    onToggleLittleLock: () -> Unit,
+    onToggleBigLock: () -> Unit,
+    onToggleGpuLock: () -> Unit,
     onSet: (String,String)->Unit,
     onProfileSelected: (ThermalProfile)->Unit, onToggleCore: (Int)->Unit,
 ) {
@@ -551,18 +563,20 @@ private fun SectionContent(
             Spacer(Modifier.height(4.dp))
             CoreFreqGrid(cores = (0..3).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzL, color = tRed)
             Spacer(Modifier.height(8.dp))
-            ChipRowTuning("Governor", GOVS, config.cpuPolicy0Governor)
- { onSet("cpu_policy0_governor", it) }
+            ChipRowTuning("Governor", GOVS, config.cpuPolicy0Governor,
+                info = "Frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy0_governor", it) }
             Spacer(Modifier.height(8.dp))
             var minI by remember(config.cpuPolicy0Min, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Min)) }
             var maxI by remember(config.cpuPolicy0Max, freqL) { mutableIntStateOf(ci(freqL, config.cpuPolicy0Max)) }
             RevertableSlider("Min Frequency", minI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(minI){0}/1000} MHz", tRed, { minI=it.toInt() },
-                onRevert = { minI = 0; onSet("cpu_policy0_min", freqL.first().toString()) }
+                onRevert = { minI = 0; onSet("cpu_policy0_min", freqL.first().toString()) },
+                info = "Minimum allowed frequency. Lower = better idle battery life.",
             ) { onSet("cpu_policy0_min", freqL[minI].toString()) }
             RevertableSlider("Max Frequency", maxI.toFloat(), 0f, freqL.lastIndex.toFloat(), (freqL.size-2).coerceAtLeast(0),
                 "${freqL.getOrElse(maxI){0}/1000} MHz", tRed, { maxI=it.toInt() },
-                onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) }
+                onRevert = { maxI = freqL.lastIndex; onSet("cpu_policy0_max", freqL.last().toString()) },
+                info = "Maximum allowed frequency. Limit to save battery or thermals.",
             ) { onSet("cpu_policy0_max", freqL[maxI].toString()) }
             Spacer(Modifier.height(6.dp))
             FreqLockRow(littleFreqLocked) { onToggleLittleLock() }
@@ -574,8 +588,8 @@ private fun SectionContent(
             Spacer(Modifier.height(4.dp))
             CoreFreqGrid(cores = (4..7).toList(), freqs = perCoreFreqMhz, maxFreq = maxMhzB, color = tRed)
             Spacer(Modifier.height(8.dp))
-            ChipRowTuning("Governor", GOVS, config.cpuPolicy4Governor)
- { onSet("cpu_policy4_governor", it) }
+            ChipRowTuning("Governor", GOVS, config.cpuPolicy4Governor,
+                info = "Frequency scaling algorithm. walt = best for interactive use.") { onSet("cpu_policy4_governor", it) }
             Spacer(Modifier.height(8.dp))
             var minI by remember(config.cpuPolicy4Min, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Min)) }
             var maxI by remember(config.cpuPolicy4Max, freqB) { mutableIntStateOf(ci(freqB, config.cpuPolicy4Max)) }
@@ -688,7 +702,8 @@ private fun SectionContent(
                 info = "Compressed swap size in RAM. Applied via ZRAM reset+mkswap.",
             ) { onSet("zram_size", ZRAM_B[zI].toString()) }
             Spacer(Modifier.height(4.dp))
-            ChipRowTuning("ZRAM Algorithm", ZRAM_ALGOS, config.zramAlgo) { onSet("zram_algo", it) }
+            ChipRowTuning("ZRAM Algorithm", ZRAM_ALGOS, config.zramAlgo,
+                info = "Compression: lz4 = fastest, zstd = best ratio, lzo = balanced.") { onSet("zram_algo", it) }
         }
         "thermal" -> {
             Text("Thermal Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tRed)
@@ -719,7 +734,8 @@ private fun SectionContent(
         "io" -> {
             Text("I/O", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tCool)
             Spacer(Modifier.height(8.dp))
-            ChipRowTuning("Scheduler", listOf("bfq","mq-deadline","kyber","none"), config.ioScheduler) { onSet("io_scheduler", it) }
+            ChipRowTuning("Scheduler", listOf("bfq","mq-deadline","kyber","none"), config.ioScheduler,
+                info = "Block I/O scheduler. bfq = interactive, mq-deadline = low latency, kyber = throughput.") { onSet("io_scheduler", it) }
             Spacer(Modifier.height(12.dp))
             // Read-ahead: discrete list, use indexing
             val liveRa = liveNodes.readAheadKb
@@ -736,7 +752,8 @@ private fun SectionContent(
             Text("Network", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = tBlue)
             Spacer(Modifier.height(8.dp))
             val liveTcp = liveNodes.tcpAlgo.ifEmpty { config.tcpAlgo }
-            ChipRowTuning("TCP Congestion", listOf("cubic","reno","westwood","bbr"), liveTcp) { onSet("tcp_algo", it) }
+            ChipRowTuning("TCP Congestion", listOf("cubic","reno","westwood","bbr"), liveTcp,
+                info = "TCP congestion control. bbr = low latency+high throughput, cubic = Linux default.") { onSet("tcp_algo", it) }
             Spacer(Modifier.height(12.dp))
             val liveRxq = liveNodes.netRxqueuelen
             val initRxq = if (liveRxq > 0) liveRxq else config.netRxqueuelen
@@ -961,123 +978,5 @@ private fun FreqLockRow(locked: Boolean, onToggle: () -> Unit) {
                 checkedThumbColor  = MaterialTheme.colorScheme.error,
                 checkedTrackColor  = MaterialTheme.colorScheme.errorContainer,
             ))
-    }
-}
-
-
-@Composable
-private fun CoreFreqGrid(cores: List<Int>, freqs: List<Int>, maxFreq: Int, color: Color) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            "Core frequencies",
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            cores.forEach { core ->
-                val freq = freqs.getOrElse(core) { 0 }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(vertical = 10.dp, horizontal = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("C$core", fontWeight = FontWeight.Bold)
-                    Text("$freq", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text("Max: $maxFreq", style = MaterialTheme.typography.bodySmall, color = color)
-    }
-}
-
-@Composable
-private fun ChipRowTuning(
-    title: String,
-    options: List<String>,
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(8.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            options.forEach { option ->
-                ProfileChip(option, selected == option) { onSelect(option) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RevertableSlider(
-    label: String,
-    value: Float,
-    min: Float,
-    max: Float,
-    steps: Int,
-    display: String,
-    tint: Color,
-    onChange: (Float) -> Unit,
-    onRevert: () -> Unit,
-    info: String = "",
-    onCommit: () -> Unit = {},
-) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            TextButton(onClick = onRevert) { Text("Revert") }
-        }
-
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            onValueChangeFinished = onCommit,
-            valueRange = min..max,
-            steps = steps.coerceAtLeast(0),
-            colors = SliderDefaults.colors(
-                thumbColor = tint,
-                activeTrackColor = tint,
-                inactiveTrackColor = MaterialTheme.colorScheme.outline,
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = Color.Transparent,
-            )
-        )
-
-        if (info.isNotBlank() || display.isNotBlank()) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                if (info.isNotBlank()) {
-                    Text(
-                        info,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    Spacer(Modifier.weight(1f))
-                }
-                Text(
-                    display,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = tint,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
     }
 }
