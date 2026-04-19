@@ -357,6 +357,9 @@ fun RevertableSlider(
     }
 }
 
+// ── Improved Core chip ───────────────────────────────────────────────
+@Composable
+fun CoreChip(coreNum: Int, online: Boolean, onToggle: () -> Unit) {
     val inter = remember { MutableInteractionSource() }
     val pressed by inter.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) .85f else 1f, spring(Spring.DampingRatioMediumBouncy), label="csc")
