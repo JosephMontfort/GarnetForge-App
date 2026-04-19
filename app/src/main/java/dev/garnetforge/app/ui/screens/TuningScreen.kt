@@ -968,3 +968,145 @@ private fun FreqLockRow(locked: Boolean, onToggle: () -> Unit) {
             ))
     }
 }
+
+// ── Live per-core frequency bars ─────────────────────────────────────
+@Composable
+private fun CoreFreqGrid(cores: List<Int>, freqs: List<Int>, maxFreq: Int, color: Color) {
+    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+    val trackBg   = if (isLight) Color.Black.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.08f)
+    val barColor  = color
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        cores.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { coreIdx ->
+                    val mhz     = freqs.getOrElse(coreIdx) { 0 }
+                    val frac    = (mhz.toFloat() / maxFreq.toFloat()).coerceIn(0f, 1f)
+                    val animFrac by animateFloatAsState(frac, spring(0.8f, 120f), label = "cf$coreIdx")
+                    val animMhz  by animateIntAsState(mhz, tween(300), label = "cm$coreIdx")
+                    Box(
+                        Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(10.dp)).background(trackBg)
+                    ) {
+                        Box(
+                            Modifier.fillMaxHeight().fillMaxWidth(animFrac)
+                                .background(Brush.horizontalGradient(listOf(barColor.copy(0.45f), barColor)), RoundedCornerShape(10.dp))
+                        )
+                        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                            Text("C$coreIdx",
+                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                                color = if (animFrac > 0.4f) Color.White.copy(if (isLight) 0.9f else 1f) else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (mhz == 0) "off" else "$animMhz",
+                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
+                                color = if (animFrac > 0.7f) Color.White.copy(if (isLight) 0.9f else 1f) else barColor)
+                        }
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+// ── Slider with long-press revert + info button ───────────────────────
+@Composable
+private fun RevertableSlider(
+    label: String, value: Float, min: Float, max: Float, steps: Int,
+    display: String, tint: Color, onDrag: (Float)->Unit,
+    onRevert: () -> Unit,
+    info: String,
+    onCommit: ()->Unit,
+) {
+    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+    var showInfo by remember { mutableStateOf(false) }
+    Column {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            // Label + info button
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                Text(label, style=MaterialTheme.typography.bodyLarge, fontWeight=FontWeight.Medium, color=MaterialTheme.colorScheme.onSurface)
+                Box(
+                    Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+                        .clickable { showInfo = !showInfo },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("i", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                }
+            }
+            AnimatedContent(display, label="dv",
+                transitionSpec={ (slideInVertically{-it}+fadeIn()).togetherWith(slideOutVertically{it}+fadeOut()) }
+            ) { Text(it, style=MaterialTheme.typography.bodyMedium, color=tint, fontWeight=FontWeight.Bold) }
+        }
+        AnimatedVisibility(showInfo, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Box(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isLight) Color(0xFFf0f4f8) else Color(0xFF1a1a2e))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(info, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Slider(
+                value = value, onValueChange = onDrag,
+                valueRange = min..max, steps = steps,
+                onValueChangeFinished = onCommit,
+                modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(
+                    thumbColor = tint, activeTrackColor = tint,
+                    inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha=if(isLight) 0.3f else 0.5f),
+                    activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent,
+                ),
+            )
+            // Long-press revert icon
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .combinedClickable(onClick = {}, onLongClick = onRevert)
+                    .background(tint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Refresh, "Revert to default", tint = tint, modifier = Modifier.size(14.dp))
+            }
+        }
+    }
+}
+
+// ── Chip row with info button ─────────────────────────────────────────
+@Composable
+private fun ChipRowTuning(label: String, opts: List<String>, sel: String, info: String = "", onSel: (String)->Unit) {
+    val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
+    var showInfo by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style=MaterialTheme.typography.bodyLarge, color=MaterialTheme.colorScheme.onSurface)
+        if (info.isNotEmpty()) {
+            Box(
+                Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+                    .clickable { showInfo = !showInfo },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("i", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+    Column(Modifier.animateContentSize()) {
+        AnimatedVisibility(showInfo, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Box(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isLight) Color(0xFFf0f4f8) else Color(0xFF1a1a2e))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(info, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+            opts.forEach { o -> ProfileChip(o, o==sel) { onSel(o) } }
+        }
+    }
+}
