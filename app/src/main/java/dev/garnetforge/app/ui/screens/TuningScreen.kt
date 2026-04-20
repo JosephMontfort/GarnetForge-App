@@ -46,6 +46,13 @@ import dev.garnetforge.app.ui.theme.*
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebSettings
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.annotation.SuppressLint
+import androidx.compose.ui.viewinterop.AndroidView
 
 // ── Data ─────────────────────────────────────────────────────────────
 private val CPU_L  = listOf(691200,960000,1190400,1344000,1497600,1651200,1900800,1958400)
@@ -753,32 +760,26 @@ private fun SectionContent(
                 info = "Network interface TX queue depth. Higher = better throughput under load.",
             ) { onSet("net_rxqueuelen", rxq.toString()) }
             Spacer(Modifier.height(12.dp))
-            NetworkSpeedTestPanel(speedTestState, onSet)
-            val isSpeedRunning = speedTestState is SpeedTestState.Running
-            Button(onClick = onRunSpeedTest,
-                enabled = !isSpeedRunning,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = tBlue)) {
-                if (isSpeedRunning) {
-                    CircularProgressIndicator(Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
-                    Spacer(Modifier.width(6.dp))
-                }
-                Text(if (isSpeedRunning) "Testing…" else "Run Speed Test", color = Color.White)
-            }
+            SpeedTestWebView()
         }
     }
 }
 
 
 
-// ── Professional Speedometer Speed Test Panel ────────────────────────
+// ── OpenSpeedTest WebView ─────────────────────────────────────────────
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun NetworkSpeedTestPanel(
-    state: SpeedTestState,
-    @Suppress("UNUSED_PARAMETER") onSet: (String, String) -> Unit,
-) {
+private fun SpeedTestWebView() {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val isLight = MaterialTheme.colorScheme.surface.red > 0.5f
-    val tBlue   = if (isLight) androidx.compose.ui.graphics.Color(0xFF0277BD) else ColorBlue
+
+    // Check connectivity at composition time; re-checks whenever the overlay is opened
+    val isOnline = remember {
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
 
     Column(
         Modifier.fillMaxWidth()
@@ -787,156 +788,55 @@ private fun NetworkSpeedTestPanel(
                 if (isLight) androidx.compose.ui.graphics.Color(0xFFEDF4FF)
                 else MaterialTheme.colorScheme.surfaceVariant.copy(0.6f)
             )
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Speed Test", style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold, color = tBlue)
-            when (state) {
-                is SpeedTestState.Running ->
-                    Text(if (state.phase == "download") "↓ Testing Download…" else "↑ Testing Upload…",
-                        style = MaterialTheme.typography.labelSmall, color = tBlue)
-                is SpeedTestState.Done ->
-                    Text("✓ Complete", style = MaterialTheme.typography.labelSmall,
-                        color = androidx.compose.ui.graphics.Color(0xFF43A047))
-                else -> {}
-            }
-        }
-
-        Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
-            // Preserve last known download speed while upload phase is running
-            var lastDlMbps by remember { mutableFloatStateOf(0f) }
-            var lastUlMbps by remember { mutableFloatStateOf(0f) }
-            val dlMbps = when {
-                state is SpeedTestState.Done    -> state.downloadMbps
-                state is SpeedTestState.Running && state.phase == "download" -> {
-                    lastDlMbps = state.currentMbps.coerceAtLeast(0f); lastDlMbps
-                }
-                else -> lastDlMbps   // upload phase — keep final download value
-            }
-            val ulMbps = when {
-                state is SpeedTestState.Done    -> state.uploadMbps
-                state is SpeedTestState.Running && state.phase == "upload" -> {
-                    lastUlMbps = state.currentMbps.coerceAtLeast(0f); lastUlMbps
-                }
-                else -> lastUlMbps
-            }
-            SpeedometerGauge("Download", dlMbps, tBlue, "↓", Modifier.weight(1f))
-            SpeedometerGauge("Upload", ulMbps, androidx.compose.ui.graphics.Color(0xFF7B1FA2), "↑", Modifier.weight(1f))
-        }
-
-        if (state is SpeedTestState.Running) {
-            LinearProgressIndicator(
-                progress = { state.fraction },
-                modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
-                color = tBlue, trackColor = tBlue.copy(0.2f)
-            )
-        }
-
-        if (state is SpeedTestState.Error) {
-            Text("Error: ${state.msg}", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error)
-        }
-        if (state is SpeedTestState.Done) {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val prefs = remember { context.getSharedPreferences("garnet_prefs", 0) }
-            var showWidgetPrompt by remember { mutableStateOf(false) }
-            LaunchedEffect(state) {
-                if (!prefs.getBoolean("widget_prompt_shown", false)) {
-                    showWidgetPrompt = true
-                    prefs.edit().putBoolean("widget_prompt_shown", true).apply()
-                }
-            }
-            if (showWidgetPrompt) WidgetPrompt(context) { showWidgetPrompt = false }
-        }
-    }
-}
-
-@Composable
-private fun WidgetPrompt(context: android.content.Context, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Widgets, null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text("Add Speed Widget?") },
-        text = { Text("Add the speed widget to your home screen for quick network testing without opening the app.") },
-        confirmButton = {
-            TextButton(onClick = {
-                try {
-                    val mgr = android.appwidget.AppWidgetManager.getInstance(context)
-                    val provider = android.content.ComponentName(context, dev.garnetforge.app.ui.widget.SpeedWidget::class.java)
-                    if (mgr.isRequestPinAppWidgetSupported) {
-                        mgr.requestPinAppWidget(provider, null, null)
+        if (isOnline) {
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        settings.setSupportZoom(false)
+                        settings.builtInZoomControls = false
+                        settings.displayZoomControls = false
+                        @Suppress("DEPRECATION")
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        // Prevent navigating away to external links
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView,
+                                request: android.webkit.WebResourceRequest
+                            ) = false
+                        }
+                        // ?Run = auto-start test on page load
+                        loadUrl("https://openspeedtest.com?Run")
                     }
-                } catch (e: Exception) { android.util.Log.e("GarnetForge", "Widget: ${e.message}") }
-                onDismiss()
-            }) { Text("Add Widget") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Not Now") } }
-    )
-}
-
-@Composable
-private fun SpeedometerGauge(
-    label: String, mbps: Float,
-    color: androidx.compose.ui.graphics.Color, arrow: String, modifier: Modifier,
-) {
-    // Needle position is proportional to speed (0–500 Mbps = full half-circle)
-    val MAX_MBPS = 500f
-    val animMbps  by animateFloatAsState(mbps.coerceAtLeast(0f), tween(400), label = "mbps")
-    val animSweep by animateFloatAsState(
-        (animMbps / MAX_MBPS).coerceIn(0f, 1f) * 180f, tween(500), label = "sweep")
-    val density = LocalDensity.current
-
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        // Arc speedometer
-        Box(Modifier.size(120.dp, 70.dp)) {
-            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-                val cx = size.width / 2f
-                val cy = size.height * 0.88f
-                val radius = size.width * 0.46f
-                val strokeW = with(density) { 12.dp.toPx() }
-
-                // Track arc (180° from left to right, bottom-centered)
-                drawArc(
-                    color = color.copy(alpha = 0.15f),
-                    startAngle = 180f, sweepAngle = 180f, useCenter = false,
-                    topLeft = Offset(cx - radius, cy - radius),
-                    size = Size(radius * 2, radius * 2),
-                    style = Stroke(strokeW, cap = StrokeCap.Round)
-                )
-                // Speed arc
-                if (animSweep > 0f) {
-                    drawArc(
-                        brush = Brush.sweepGradient(
-                            listOf(color.copy(0.5f), color, color.copy(0.9f)),
-                            Offset(cx, cy)
-                        ),
-                        startAngle = 180f, sweepAngle = animSweep.coerceIn(0f, 180f),
-                        useCenter = false,
-                        topLeft = Offset(cx - radius, cy - radius),
-                        size = Size(radius * 2, radius * 2),
-                        style = Stroke(strokeW, cap = StrokeCap.Round)
-                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(390.dp)
+            )
+        } else {
+            Box(
+                Modifier.fillMaxWidth().height(160.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.WifiOff, null, Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.45f))
+                    Text("No internet connection",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Connect to run a speed test",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.65f))
                 }
-                // Needle tip dot
-                val needleAngle = Math.toRadians((180 + animSweep.coerceIn(0f, 180f)).toDouble())
-                val nx = cx + radius * kotlin.math.cos(needleAngle).toFloat()
-                val ny = cy + radius * kotlin.math.sin(needleAngle).toFloat()
-                drawCircle(color, radius = with(density) { 5.dp.toPx() }, center = Offset(nx, ny))
-            }
-            // Center speed reading
-            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$arrow ${if (mbps <= 0f) "--" else "%.1f".format(animMbps)}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = color, fontWeight = FontWeight.ExtraBold)
-                Text("Mbps", style = MaterialTheme.typography.labelSmall, color = color.copy(0.7f))
             }
         }
-        Text(label, style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
