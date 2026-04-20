@@ -91,6 +91,7 @@ class GarnetService : Service() {
         })
         screenOn = (getSystemService(POWER_SERVICE) as PowerManager).isInteractive
         scope.launch {
+            runCatching { sysfsRepo.loadNodePaths() }  // ensure detected paths are loaded before any writes
             cfg = runCatching { configRepo.load() }.getOrDefault(GarnetConfig())
             appProfileMap = runCatching { sysfsRepo.getAppProfiles().filter { it.value.enabled } }.getOrDefault(emptyMap())
             profileMapAge = System.currentTimeMillis()

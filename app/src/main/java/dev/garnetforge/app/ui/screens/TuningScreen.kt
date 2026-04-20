@@ -805,23 +805,25 @@ private fun NetworkSpeedTestPanel(
         }
 
         Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
-            val dlMbps = if (state is SpeedTestState.Done) state.downloadMbps
-                else if (state is SpeedTestState.Running && state.phase == "download") state.currentMbps
-                else 0f
-            val ulMbps = if (state is SpeedTestState.Done) state.uploadMbps
-                else if (state is SpeedTestState.Running && state.phase == "upload") state.currentMbps
-                else 0f
-            val dlFrac = if (state is SpeedTestState.Running && state.phase == "download") state.fraction
-                else if (state is SpeedTestState.Done) 1f else 0f
-            val ulFrac = if (state is SpeedTestState.Running && state.phase == "upload") state.fraction
-                else if (state is SpeedTestState.Done) 1f else 0f
-
-            SpeedometerGauge("Download", dlMbps,
-                if (state is SpeedTestState.Running && state.phase == "download") state.fraction else if (state is SpeedTestState.Done) 1f else 0f,
-                tBlue, "↓", Modifier.weight(1f))
-            SpeedometerGauge("Upload", ulMbps,
-                if (state is SpeedTestState.Running && state.phase == "upload") state.fraction else if (state is SpeedTestState.Done) 1f else 0f,
-                androidx.compose.ui.graphics.Color(0xFF7B1FA2), "↑", Modifier.weight(1f))
+            // Preserve last known download speed while upload phase is running
+            var lastDlMbps by remember { mutableFloatStateOf(0f) }
+            var lastUlMbps by remember { mutableFloatStateOf(0f) }
+            val dlMbps = when {
+                state is SpeedTestState.Done    -> state.downloadMbps
+                state is SpeedTestState.Running && state.phase == "download" -> {
+                    lastDlMbps = state.currentMbps.coerceAtLeast(0f); lastDlMbps
+                }
+                else -> lastDlMbps   // upload phase — keep final download value
+            }
+            val ulMbps = when {
+                state is SpeedTestState.Done    -> state.uploadMbps
+                state is SpeedTestState.Running && state.phase == "upload" -> {
+                    lastUlMbps = state.currentMbps.coerceAtLeast(0f); lastUlMbps
+                }
+                else -> lastUlMbps
+            }
+            SpeedometerGauge("Download", dlMbps, tBlue, "↓", Modifier.weight(1f))
+            SpeedometerGauge("Upload", ulMbps, androidx.compose.ui.graphics.Color(0xFF7B1FA2), "↑", Modifier.weight(1f))
         }
 
         if (state is SpeedTestState.Running) {
@@ -876,11 +878,14 @@ private fun WidgetPrompt(context: android.content.Context, onDismiss: () -> Unit
 
 @Composable
 private fun SpeedometerGauge(
-    label: String, mbps: Float, progress: Float,
+    label: String, mbps: Float,
     color: androidx.compose.ui.graphics.Color, arrow: String, modifier: Modifier,
 ) {
-    val animMbps by animateFloatAsState(mbps.coerceAtLeast(0f), tween(300), label = "mbps")
-    val animSweep by animateFloatAsState(progress * 180f, tween(500), label = "sweep")
+    // Needle position is proportional to speed (0–500 Mbps = full half-circle)
+    val MAX_MBPS = 500f
+    val animMbps  by animateFloatAsState(mbps.coerceAtLeast(0f), tween(400), label = "mbps")
+    val animSweep by animateFloatAsState(
+        (animMbps / MAX_MBPS).coerceIn(0f, 1f) * 180f, tween(500), label = "sweep")
     val density = LocalDensity.current
 
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,

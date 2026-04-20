@@ -38,14 +38,30 @@ class SysfsRepository(private val context: Context) {
         const val GPU_IT_FB     = "/sys/class/kgsl/kgsl-3d0/idle_timer"
         const val THERMAL_BOOST_FB = "/sys/class/thermal/thermal_message/boost"
 
-        // Dynamic — populated from nodes.prop at runtime
+        // Dynamic — populated from nodes.prop at runtime via loadNodePaths()
         var CPU0_MAX   = CPU0_MAX_FB; var CPU0_MIN = CPU0_MIN_FB; var CPU0_GOV = CPU0_GOV_FB
         var CPU4_MAX   = CPU4_MAX_FB; var CPU4_MIN = CPU4_MIN_FB; var CPU4_GOV = CPU4_GOV_FB
+        // cpuinfo_min_freq — updated by loadNodePaths() to use detected policy
         var CPU0_INFO_MIN = "/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_min_freq"
         var CPU4_INFO_MIN = "/sys/devices/system/cpu/cpufreq/policy4/cpuinfo_min_freq"
         var GPU_MAX    = GPU_MAX_FB; var GPU_MIN = GPU_MIN_FB; var GPU_CUR = GPU_CUR_FB
         var GPU_PWRLEVEL = GPU_PL_FB; var GPU_IDLE_TIMER = GPU_IT_FB
         var THERMAL_BOOST = THERMAL_BOOST_FB
+
+        // Thermal zones + battery — populated from nodes.prop; fallbacks are Garnet-specific
+        var THERMAL_ZONE_CPU = "/sys/class/thermal/thermal_zone67/temp"
+        var THERMAL_ZONE_GPU = "/sys/class/thermal/thermal_zone31/temp"
+        var THERMAL_ZONE_DDR = "/sys/class/thermal/thermal_zone43/temp"
+        var BATTERY_TEMP     = "/sys/class/power_supply/battery/temp"
+
+        // CPU topology — populated from nodes.prop
+        var CPU_CORE_COUNT   = 8
+        var PER_CORE_CUR_FREQ: Array<String> = Array(8) { c ->
+            "/sys/devices/system/cpu/cpu$c/cpufreq/scaling_cur_freq"
+        }
+
+        /** True once loadNodePaths() has successfully run. */
+        @Volatile var nodesLoaded = false
     }
 
     /** Load discovered node paths from nodes.prop into companion vars. Call after detection. */
@@ -86,7 +102,23 @@ class SysfsRepository(private val context: Context) {
         val boost = node("thermal_msg_boost", THERMAL_BOOST_FB)
         THERMAL_BOOST = boost
 
-        android.util.Log.i("GarnetForge", "Nodes loaded: little=$lp big=$bpol gpu=$gpuCur")
+        // ── Thermal zones ─────────────────────────────────────────────
+        THERMAL_ZONE_CPU = node("thermal_zone_cpu", node("thermal_zone_cpu_fb", "/sys/class/thermal/thermal_zone67/temp"))
+        THERMAL_ZONE_GPU = node("thermal_zone_gpu", node("thermal_zone_gpu_fb", "/sys/class/thermal/thermal_zone31/temp"))
+        THERMAL_ZONE_DDR = node("thermal_zone_ddr", node("thermal_zone_ddr_fb", "/sys/class/thermal/thermal_zone43/temp"))
+        BATTERY_TEMP     = np["battery_temp"]?.trim()?.takeIf { it.startsWith("/") }
+                           ?: "/sys/class/power_supply/battery/temp"
+
+        // ── CPU topology ──────────────────────────────────────────────
+        CPU_CORE_COUNT = np["cpu_core_count"]?.trim()?.toIntOrNull()?.coerceIn(2, 16) ?: 8
+        PER_CORE_CUR_FREQ = Array(CPU_CORE_COUNT) { c ->
+            np["cpu${c}_cur_freq"]?.trim()?.takeIf { it.startsWith("/") }
+                ?: "/sys/devices/system/cpu/cpu$c/cpufreq/scaling_cur_freq"
+        }
+
+        nodesLoaded = true
+        android.util.Log.i("GarnetForge",
+            "Nodes loaded: little=$lp big=$bpol gpu=$gpuCur tz_cpu=$THERMAL_ZONE_CPU cores=$CPU_CORE_COUNT")
     }
 
     // ── Available frequencies from nodes.prop ─────────────────────────
@@ -165,56 +197,65 @@ class SysfsRepository(private val context: Context) {
         )
     }
 
-// ── Live stats ────────────────────────────────────────────────────
-    // ── Live stats ────────────────────────────────────────────────
-    // ── Live stats ────────────────────────────────────────────────────
+// ── Live stats (uses cached companion vars — no nodes.prop re-read) ──────
     suspend fun getLiveStats(): LiveStats = withContext(Dispatchers.IO) {
-        val np = Shell.cmd("cat $NODES 2>/dev/null").exec().out.associate { line ->
-            val eq = line.indexOf('='); if (eq > 0) line.substring(0, eq) to line.substring(eq + 1) else "" to ""
-        }
-        fun tzp(k: String, fb: String) = np[k]?.trim()?.takeIf { it.startsWith("/") } ?: fb
-        val cpuTz = tzp("thermal_zone_cpu",  tzp("thermal_zone_cpu_fb",  "/sys/class/thermal/thermal_zone67/temp"))
-        val gpuTz = tzp("thermal_zone_gpu",  tzp("thermal_zone_gpu_fb",  "/sys/class/thermal/thermal_zone31/temp"))
-        val ddrTz = tzp("thermal_zone_ddr",  tzp("thermal_zone_ddr_fb",  "/sys/class/thermal/thermal_zone43/temp"))
-        val battN = tzp("battery_temp", "/sys/class/power_supply/battery/temp")
-        val coreCount = np["cpu_core_count"]?.trim()?.toIntOrNull()?.coerceIn(1, 16) ?: 8
         val litN = CPU0_MAX.replace("scaling_max_freq", "scaling_cur_freq")
         val bigN = CPU4_MAX.replace("scaling_max_freq", "scaling_cur_freq")
 
+        // Single batched command for all primary metrics
         val clRaw = Shell.cmd(
-            "printf '%s|%s|%s|%s|%s|%s|%s|%s' " +
-            "\"$(cat $litN 2>/dev/null)\" " +
-            "\"$(cat $bigN 2>/dev/null)\" " +
-            "\"$(cat $GPU_CUR 2>/dev/null)\" " +
-            "\"$(cat $cpuTz 2>/dev/null)\" " +
-            "\"$(cat $gpuTz 2>/dev/null)\" " +
-            "\"$(cat $ddrTz 2>/dev/null)\" " +
-            "\"$(cat $battN 2>/dev/null)\" " +
-            "\"$(awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null)\""
+            "printf '%s|%s|%s|%s|%s|%s|%s|%s'" +
+            " \"\$(cat $litN 2>/dev/null)\"" +
+            " \"\$(cat $bigN 2>/dev/null)\"" +
+            " \"\$(cat $GPU_CUR 2>/dev/null)\"" +
+            " \"\$(cat $THERMAL_ZONE_CPU 2>/dev/null)\"" +
+            " \"\$(cat $THERMAL_ZONE_GPU 2>/dev/null)\"" +
+            " \"\$(cat $THERMAL_ZONE_DDR 2>/dev/null)\"" +
+            " \"\$(cat $BATTERY_TEMP 2>/dev/null)\"" +
+            " \"\$(awk '/MemAvailable/{print \$2}' /proc/meminfo 2>/dev/null)\""
         ).exec().out.firstOrNull() ?: ""
 
-        val perCoreFreqs = (0 until coreCount).map { c ->
-            val n = np["cpu${c}_cur_freq"]?.trim()
-                ?: "/sys/devices/system/cpu/cpu${c}/cpufreq/scaling_cur_freq"
-            Shell.cmd("cat $n 2>/dev/null").exec().out.firstOrNull()
-                ?.trim()?.toLongOrNull()?.div(1000)?.toInt() ?: 0
-        }.let { if (it.size < 8) it + List(8 - it.size) { 0 } else it }
+        // Single batched command for all per-core frequencies
+        val n = CPU_CORE_COUNT
+        val coreCmd = buildString {
+            append("printf '")
+            repeat(n) { append("%s|") }
+            append("'")
+            PER_CORE_CUR_FREQ.take(n).forEach { path ->
+                append(" \"\$(cat $path 2>/dev/null || echo 0)\"")
+            }
+        }
+        val coreRaw = Shell.cmd(coreCmd).exec().out.firstOrNull() ?: ""
+
+        val perCoreFreqs = coreRaw.trimEnd('|').split("|")
+            .take(n)
+            .map { it.trim().toLongOrNull()?.div(1000)?.toInt() ?: 0 }
+            .let { list -> if (list.size < 8) list + List(8 - list.size) { 0 } else list }
 
         val cp = clRaw.split("|")
         fun ck(i: Int) = cp.getOrNull(i)?.trim()?.toLongOrNull() ?: 0L
-        val h = LocalTime.now().hour
-        val h12 = if (h % 12 == 0) 12 else h % 12
+
+        // GPU cur_freq may be reported in Hz (>1M), kHz, or MHz — normalise to MHz
+        val gpuRaw = ck(2)
+        val gpuMhz = when {
+            gpuRaw > 1_000_000L -> (gpuRaw / 1_000_000L).toInt()
+            gpuRaw > 1_000L     -> (gpuRaw / 1_000L).toInt()
+            else                -> gpuRaw.toInt()
+        }
+
+        val h    = LocalTime.now().hour
+        val h12  = if (h % 12 == 0) 12 else h % 12
         val ampm = if (h < 12) "AM" else "PM"
         LiveStats(
             cpu0FreqMhz    = (ck(0) / 1000).toInt(),
             cpu4FreqMhz    = (ck(1) / 1000).toInt(),
-            gpuFreqMhz     = (ck(2) / 1_000_000).toInt(),
+            gpuFreqMhz     = gpuMhz,
             cpuTempC       = (ck(3) / 1000).toInt(),
             gpuTempC       = (ck(4) / 1000).toInt(),
             ddrTempC       = (ck(5) / 1000).toInt(),
             battTempC      = (ck(6) / 10).toInt(),
             freeRamMb      = (ck(7) / 1024).toInt(),
-            timeStr        = "$h12:${LocalTime.now().minute.toString().padStart(2,'0')} $ampm",
+            timeStr        = "$h12:${LocalTime.now().minute.toString().padStart(2, '0')} $ampm",
             perCoreFreqMhz = perCoreFreqs,
         )
     }
@@ -433,66 +474,163 @@ class SysfsRepository(private val context: Context) {
 
     fun getDiagnosticFilePath(): String = "$INSTALL_DIR/diagnostic_report.txt"
 
-    // ── Network speed test (using shell dd + /dev/urandom for throughput) ─
+    // ── Network speed test — background curls + Kotlin polling for live Mbps ──
     /**
-     * Professional multi-connection speed test.
-     * - 4 parallel curl streams for download (~100 MB total, 15s)
-     * - 4 parallel curl streams for upload  (~50 MB total,  10s)
-     * Reports live progress via [onProgress] (0f–1f, current Mbps).
+     * Runs a professional multi-stream speed test with live progress callbacks.
+     *
+     * Architecture: each phase writes curl processes to background in a shell script,
+     * then Kotlin polls downloaded/uploaded byte counts every 700 ms to compute
+     * live Mbps and emit it via [onProgress]. This allows the UI speedometer to
+     * animate in real time rather than only updating at phase completion.
+     *
+     * Download: 4 × 25 MB parallel curl streams (~15 s)
+     * Upload:   4 × 3 MB parallel curl streams  (~12 s)
      */
     suspend fun runSpeedTest(
         onProgress: (phase: String, fraction: Float, currentMbps: Float) -> Unit = { _, _, _ -> }
     ): Pair<Float, Float> = withContext(Dispatchers.IO) {
 
-        // ── Download ───────────────────────────────────────────────
-        onProgress("download", 0f, 0f)
-        // 4 parallel 25 MB downloads, 15s each
-        val dlScript = """
-S=$(date +%s%3N)
-BYTES=0
-for i in 1 2 3 4; do
-  curl -s -o /dev/null -w '%{size_download}\n' --max-time 15 --connect-timeout 5     'https://speed.cloudflare.com/__down?bytes=25000000' 2>/dev/null &
-done
-wait
-E=$(date +%s%3N)
-ELAPSED=$((E - S))
-# Re-run single stream if parallel failed (no curl jobs output)
-curl -s -o /dev/null -w '%{size_download}|%{time_total}\n' --max-time 15 --connect-timeout 5   'https://speed.cloudflare.com/__down?bytes=20000000' 2>/dev/null
-printf 'T:%d' "${'$'}ELAPSED"
-        """.trimIndent()
-        val dlRaw = Shell.cmd(dlScript).exec().out
-        val dlTimeMs = dlRaw.lastOrNull { it.startsWith("T:") }
-            ?.removePrefix("T:")?.toLongOrNull() ?: -1L
-        // Parse individual size_download lines
-        val dlBytes = dlRaw.filter { it.contains("|") }
-            .mapNotNull { it.substringBefore("|").trim().toLongOrNull() }
-            .sum().let { if (it > 0) it else 20_000_000L }
-        val dlMbps = if (dlTimeMs > 500) (dlBytes * 8f / 1_000_000f) / (dlTimeMs / 1000f) else -1f
-        onProgress("download", 1f, dlMbps)
+        val tmp = "$INSTALL_DIR/speedtest_tmp"
+        var dlFinalMbps = -1f
+        var ulFinalMbps = -1f
 
-        // ── Upload ─────────────────────────────────────────────────
-        onProgress("upload", 0f, 0f)
-        val ulScript = """
-S=$(date +%s%3N)
-for i in 1 2 3 4; do
-  dd if=/dev/urandom bs=1024 count=3072 2>/dev/null |   curl -s -o /dev/null -w '%{size_upload}|%{time_total}\n' --max-time 12     --connect-timeout 5 -X POST -H 'Content-Type: application/octet-stream'     --data-binary @- 'https://speed.cloudflare.com/__up' 2>/dev/null &
-done
-wait
-E=$(date +%s%3N)
-printf 'T:%d' "$((E - S))"
-        """.trimIndent()
-        val ulRaw = Shell.cmd(ulScript).exec().out
-        val ulTimeMs = ulRaw.lastOrNull { it.startsWith("T:") }
-            ?.removePrefix("T:")?.toLongOrNull() ?: -1L
-        val ulBytes = ulRaw.filter { it.contains("|") }
-            .mapNotNull { it.substringBefore("|").trim().toLongOrNull() }
-            .sum().let { if (it > 0) it else 12_000_000L }
-        val ulMbps = if (ulTimeMs > 500) (ulBytes * 8f / 1_000_000f) / (ulTimeMs / 1000f) else -1f
-        onProgress("upload", 1f, ulMbps)
+        Shell.cmd("rm -rf $tmp && mkdir -p $tmp").exec()
+
+        try {
+            // ── DOWNLOAD ──────────────────────────────────────────────
+            onProgress("download", 0f, 0f)
+
+            // Build the download script without shell-variable interpolation issues.
+            // $tmp is a Kotlin variable (interpolated here); the shell script itself
+            // has no variables, so no Kotlin/$-escaping conflicts.
+            val dlScriptContent = buildString {
+                appendLine("#!/system/bin/sh")
+                for (i in 1..4) {
+                    appendLine("curl -s -o $tmp/dl$i.tmp --max-time 15 --connect-timeout 5 'https://speed.cloudflare.com/__down?bytes=25000000' 2>/dev/null &")
+                }
+                appendLine("wait")
+                appendLine("printf done > $tmp/dl_done")
+            }
+            val dlB64 = android.util.Base64.encodeToString(dlScriptContent.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+            Shell.cmd(
+                "printf '%s' '$dlB64' | base64 -d > $tmp/dl.sh",
+                "chmod 755 $tmp/dl.sh",
+                "sh $tmp/dl.sh > $tmp/dl.log 2>&1 &"   // background — output redirected
+            ).exec()
+
+            val dlStartMs   = System.currentTimeMillis()
+            var dlLastBytes = 0L
+            var dlLastMs    = dlStartMs
+
+            while (true) {
+                kotlinx.coroutines.delay(700)
+                val now     = System.currentTimeMillis()
+                val elapsed = now - dlStartMs
+                val done    = Shell.cmd("[ -f $tmp/dl_done ] && echo y || echo n")
+                                  .exec().out.firstOrNull()?.trim() == "y"
+
+                // Sum sizes of all dl*.tmp files in one awk pass (no shell $-var issues in Kotlin)
+                val totalBytes = Shell.cmd(
+                    "du -sk $tmp/dl1.tmp $tmp/dl2.tmp $tmp/dl3.tmp $tmp/dl4.tmp 2>/dev/null | awk '{sum+=\$1} END{print sum*1024}'"
+                ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: 0L
+
+                val deltaBytes  = (totalBytes - dlLastBytes).coerceAtLeast(0L)
+                val deltaMs     = (now - dlLastMs).coerceAtLeast(1L)
+                val currentMbps = (deltaBytes * 8f / 1_000_000f) / (deltaMs / 1000f)
+                val fraction    = if (done) 1f else (elapsed / 15_000f).coerceIn(0f, 0.98f)
+
+                onProgress("download", fraction, currentMbps.coerceAtLeast(0f))
+                dlLastBytes = totalBytes
+                dlLastMs    = now
+
+                if (done || elapsed > 18_000L) {
+                    val totalMs = now - dlStartMs
+                    // Re-read final sizes accurately
+                    val finalBytes = Shell.cmd(
+                        "du -sk $tmp/dl1.tmp $tmp/dl2.tmp $tmp/dl3.tmp $tmp/dl4.tmp 2>/dev/null | awk '{sum+=\$1} END{print sum*1024}'"
+                    ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: totalBytes
+                    dlFinalMbps = if (totalMs > 500L && finalBytes > 0L)
+                        (finalBytes * 8f / 1_000_000f) / (totalMs / 1000f) else -1f
+                    onProgress("download", 1f, dlFinalMbps.coerceAtLeast(0f))
+                    android.util.Log.i("GarnetForge", "DL done: ${finalBytes/1024}KB in ${totalMs}ms → %.1f Mbps".format(dlFinalMbps))
+                    break
+                }
+            }
+
+            // ── UPLOAD ────────────────────────────────────────────────
+            onProgress("upload", 0f, 0f)
+
+            // Pre-generate 3 MB random upload data, then run 4 parallel uploads.
+            // Each curl writes its size_upload count to ul$i.out; we poll those files.
+            val ulScriptContent = buildString {
+                appendLine("#!/system/bin/sh")
+                appendLine("dd if=/dev/urandom bs=1048576 count=3 of=$tmp/ul_data 2>/dev/null")
+                for (i in 1..4) {
+                    appendLine(
+                        "curl -s -X POST -H 'Content-Type: application/octet-stream'" +
+                        " --data-binary @$tmp/ul_data -o /dev/null -w '%{size_upload}'" +
+                        " --max-time 12 --connect-timeout 5" +
+                        " 'https://speed.cloudflare.com/__up' 2>/dev/null > $tmp/ul$i.out &"
+                    )
+                }
+                appendLine("wait")
+                appendLine("printf done > $tmp/ul_done")
+            }
+            val ulB64 = android.util.Base64.encodeToString(ulScriptContent.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+            Shell.cmd(
+                "printf '%s' '$ulB64' | base64 -d > $tmp/ul.sh",
+                "chmod 755 $tmp/ul.sh",
+                "sh $tmp/ul.sh > $tmp/ul.log 2>&1 &"
+            ).exec()
+
+            val ulStartMs = System.currentTimeMillis()
+            var ulPrevBytes = 0L
+
+            while (true) {
+                kotlinx.coroutines.delay(700)
+                val now     = System.currentTimeMillis()
+                val elapsed = now - ulStartMs
+                val done    = Shell.cmd("[ -f $tmp/ul_done ] && echo y || echo n")
+                                  .exec().out.firstOrNull()?.trim() == "y"
+
+                // Count completed uploads + sum bytes from ul*.out files
+                val completedBytes = Shell.cmd(
+                    "cat $tmp/ul1.out $tmp/ul2.out $tmp/ul3.out $tmp/ul4.out 2>/dev/null | awk '{sum+=\$1} END{print sum+0}'"
+                ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: 0L
+
+                val completedCount = Shell.cmd(
+                    "find $tmp -name 'ul*.out' -size +0 2>/dev/null | wc -l"
+                ).exec().out.firstOrNull()?.trim()?.toIntOrNull() ?: 0
+
+                val deltaBytes  = (completedBytes - ulPrevBytes).coerceAtLeast(0L)
+                val deltaMs     = (now - ulStartMs).coerceAtLeast(1L)
+                val currentMbps = if (completedBytes > 0L)
+                    (completedBytes * 8f / 1_000_000f) / (deltaMs / 1000f) else 0f
+                val fraction    = if (done) 1f else (completedCount / 4f).coerceIn(0f, 0.98f)
+
+                onProgress("upload", fraction, currentMbps.coerceAtLeast(0f))
+                ulPrevBytes = completedBytes
+
+                if (done || elapsed > 20_000L) {
+                    val totalMs    = now - ulStartMs
+                    val finalBytes = Shell.cmd(
+                        "cat $tmp/ul1.out $tmp/ul2.out $tmp/ul3.out $tmp/ul4.out 2>/dev/null | awk '{sum+=\$1} END{print sum+0}'"
+                    ).exec().out.firstOrNull()?.trim()?.toLongOrNull() ?: completedBytes
+                    ulFinalMbps = if (totalMs > 500L && finalBytes > 0L)
+                        (finalBytes * 8f / 1_000_000f) / (totalMs / 1000f) else -1f
+                    onProgress("upload", 1f, ulFinalMbps.coerceAtLeast(0f))
+                    android.util.Log.i("GarnetForge", "UL done: ${finalBytes/1024}KB in ${totalMs}ms → %.1f Mbps".format(ulFinalMbps))
+                    break
+                }
+            }
+
+        } finally {
+            Shell.cmd("rm -rf $tmp").exec()
+        }
 
         Pair(
-            if (dlMbps > 0) dlMbps else -1f,
-            if (ulMbps > 0) ulMbps else -1f
+            if (dlFinalMbps > 0) dlFinalMbps else -1f,
+            if (ulFinalMbps > 0) ulFinalMbps else -1f
         )
     }
 
